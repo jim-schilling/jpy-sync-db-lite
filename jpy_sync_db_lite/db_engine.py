@@ -150,6 +150,8 @@ class DbEngine:
                 # Return count for bulk operations, True for single operations
                 result = len(request.params) if isinstance(request.params, list) else True
                 request.response_queue.put(('success', result))
+        else:
+            raise ValueError(f"Unsupported operation type: {request.operation}")
     
     # Public API methods
     def execute(self, query: str, params: Optional[Union[Dict[str, Any], List[Dict[str, Any]]]] = None) -> Union[bool, int]:
@@ -234,6 +236,8 @@ class DbEngine:
                         else:
                             conn.execute(text(op['query']), params)
                             results.append(True)  # Return True for single operations
+                    else:
+                        raise ValueError(f"Unsupported operation type: {op['type']}")
                 
                 trans.commit()
                 return results
