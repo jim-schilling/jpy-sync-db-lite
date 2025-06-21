@@ -23,14 +23,14 @@ pip install jpy-sync-db-lite
 
 ### From source
 ```bash
-git clone https://github.com/jimschilling/jpy-sync-db-lite.git
+git clone https://github.com/jim-schilling/jpy-sync-db-lite.git
 cd jpy-sync-db-lite
 pip install -e .
 ```
 
 ### Development setup
 ```bash
-git clone https://github.com/jimschilling/jpy-sync-db-lite.git
+git clone https://github.com/jim-schilling/jpy-sync-db-lite.git
 cd jpy-sync-db-lite
 pip install -e ".[dev]"
 ```
