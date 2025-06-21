@@ -101,7 +101,7 @@ class DbEngine:
             except queue.Empty:
                 continue
             except Exception as e:
-                logging.error(f"Worker error: {e}")
+                logging.exception(f"Worker error on request.")
                 with self.stats_lock:
                     self.stats['errors'] += 1
     
@@ -243,6 +243,7 @@ class DbEngine:
                 return results
                 
             except Exception as e:
+                logging.exception(f"Transaction failed. Rolling back.", exc_info=True)
                 trans.rollback()
                 raise e
     
