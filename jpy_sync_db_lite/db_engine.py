@@ -19,6 +19,13 @@ from sqlalchemy.pool import StaticPool
 from jpy_sync_db_lite.db_request import DbRequest
 
 
+class DbOperationError(Exception):
+    """
+    Exception raised when a database operation fails.
+    """
+    pass
+
+
 class DbEngine:
     def __init__(self, database_url: str, **kwargs) -> None:
         """
@@ -175,7 +182,7 @@ class DbEngine:
         
         status, result = response_queue.get()
         if status == 'error':
-            raise Exception(result)
+            raise DbOperationError(result)
         return result
     
     def fetch(self, query: str, params: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
@@ -199,7 +206,7 @@ class DbEngine:
         
         status, result = response_queue.get()
         if status == 'error':
-            raise Exception(result)
+            raise DbOperationError(result)
         return result
     
     def execute_transaction(self, operations: List[Dict[str, Any]]) -> List[Any]:
