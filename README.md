@@ -204,22 +204,6 @@ All operations are thread-safe through:
 pytest
 ```
 
-### Code Formatting
-```bash
-black .
-isort .
-```
-
-### Type Checking
-```bash
-mypy jpy_sync_db_lite/
-```
-
-### Linting
-```bash
-flake8 jpy_sync_db_lite/
-```
-
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
