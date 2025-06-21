@@ -138,25 +138,30 @@ class DbEngine:
             if request.response_queue:
                 request.response_queue.put(('success', [dict(row._mapping) for row in rows]))
         
-        elif request.operation in ['execute', 'bulk_insert', 'bulk_update']:
+        elif request.operation == 'execute':
             if isinstance(request.params, list):
                 conn.execute(text(request.query), request.params)
             else:
                 conn.execute(text(request.query), request.params or {})
             # Commit changes for non-fetch operations
             conn.commit()
+            
+            if request.response_queue:
+                # Return count for bulk operations, True for single operations
+                result = len(request.params) if isinstance(request.params, list) else True
+                request.response_queue.put(('success', result))
     
     # Public API methods
-    def execute(self, query: str, params: Optional[Union[Dict[str, Any], List[Dict[str, Any]]]] = None) -> Any:
+    def execute(self, query: str, params: Optional[Union[Dict[str, Any], List[Dict[str, Any]]]] = None) -> Union[bool, int]:
         """
-        Execute a query.
+        Execute a query (INSERT, UPDATE, DELETE, or any non-SELECT statement).
         
         Args:
             query: SQL query string to execute
-            params: Query parameters as dict or list of dicts for bulk operations
+            params: Query parameters as dict (single operation) or list of dicts (bulk operations)
             
         Returns:
-            Query execution result
+            True for single operations, number of records for bulk operations
             
         Raises:
             Exception: If query execution fails
@@ -195,61 +200,13 @@ class DbEngine:
             raise Exception(result)
         return result
     
-    def bulk_insert(self, query: str, params_list: List[Dict[str, Any]]) -> int:
-        """
-        Optimized bulk insert for performance.
-        
-        Args:
-            query: SQL INSERT query string
-            params_list: List of parameter dictionaries for bulk insert
-            
-        Returns:
-            Number of records inserted
-            
-        Raises:
-            Exception: If bulk insert operation fails
-        """
-        response_queue = queue.Queue()
-        request = DbRequest('bulk_insert', query, params_list, response_queue)
-        
-        self.request_queue.put(request)
-        
-        status, result = response_queue.get()
-        if status == 'error':
-            raise Exception(result)
-        return len(params_list)
-    
-    def bulk_update(self, query: str, params_list: List[Dict[str, Any]]) -> int:
-        """
-        Optimized bulk update for performance.
-        
-        Args:
-            query: SQL UPDATE query string
-            params_list: List of parameter dictionaries for bulk update
-            
-        Returns:
-            Number of records updated
-            
-        Raises:
-            Exception: If bulk update operation fails
-        """
-        response_queue = queue.Queue()
-        request = DbRequest('bulk_update', query, params_list, response_queue)
-        
-        self.request_queue.put(request)
-        
-        status, result = response_queue.get()
-        if status == 'error':
-            raise Exception(result)
-        return len(params_list)
-    
     def execute_transaction(self, operations: List[Dict[str, Any]]) -> List[Any]:
         """
         Execute multiple operations in a single transaction for data consistency.
         
         Args:
             operations: List of operation dictionaries with keys:
-                - 'type': Operation type ('fetch', 'execute', 'bulk_insert', 'bulk_update')
+                - 'type': Operation type ('fetch' or 'execute')
                 - 'query': SQL query string
                 - 'params': Query parameters (optional)
                 
@@ -264,12 +221,19 @@ class DbEngine:
             try:
                 results = []
                 for op in operations:
+                    if 'type' not in op:
+                        raise ValueError("Operation type is required")
                     if op['type'] == 'fetch':
                         result = conn.execute(text(op['query']), op.get('params', {}))
                         results.append([dict(row._mapping) for row in result.fetchall()])
-                    else:
-                        conn.execute(text(op['query']), op.get('params', {}))
-                        results.append(True)
+                    elif op['type'] == 'execute':
+                        params = op.get('params', {})
+                        if isinstance(params, list):
+                            conn.execute(text(op['query']), params)
+                            results.append(len(params))  # Return count for bulk operations
+                        else:
+                            conn.execute(text(op['query']), params)
+                            results.append(True)  # Return True for single operations
                 
                 trans.commit()
                 return results
@@ -338,13 +302,19 @@ if __name__ == "__main__":
     users = db.fetch("SELECT * FROM users WHERE active = :active", 
                      {"active": True})
     
-    # Bulk operations
-    user_data = [{"name": f"User{i}", "email": f"user{i}@example.com"} for i in range(1000)]
-    db.bulk_insert("INSERT INTO users (name, email) VALUES (:name, :email)", user_data)
+    # Single operations using execute
+    db.execute("INSERT INTO users (name, email) VALUES (:name, :email)", 
+               {"name": "John Doe", "email": "john@example.com"})
     
-    # Bulk update example
+    # Bulk operations using execute
+    user_data = [{"name": f"User{i}", "email": f"user{i}@example.com"} for i in range(1000)]
+    count = db.execute("INSERT INTO users (name, email) VALUES (:name, :email)", user_data)
+    print(f"Inserted {count} users")
+    
+    # Bulk update using execute
     update_data = [{"id": i, "last_login": time.time()} for i in range(1, 101)]
-    db.bulk_update("UPDATE users SET last_login = :last_login WHERE id = :id", update_data)
+    count = db.execute("UPDATE users SET last_login = :last_login WHERE id = :id", update_data)
+    print(f"Updated {count} users")
     
     # Transaction for complex operations
     operations = [

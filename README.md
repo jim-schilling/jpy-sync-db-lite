@@ -10,7 +10,7 @@ A lightweight, thread-safe SQLite database wrapper built on SQLAlchemy with opti
 - **SQLAlchemy 2.0+ compatibility** with modern async patterns
 - **Performance optimized** with SQLite-specific pragmas
 - **Simple API** for common database operations
-- **Bulk operations** for efficient data handling
+- **Consolidated operations** for both single and bulk operations
 - **Transaction support** for complex operations
 - **Statistics tracking** for monitoring performance
 
@@ -52,7 +52,7 @@ db.execute("""
     )
 """)
 
-# Insert data
+# Insert single record
 db.execute(
     "INSERT INTO users (name, email) VALUES (:name, :email)",
     {"name": "John Doe", "email": "john@example.com"}
@@ -62,19 +62,46 @@ db.execute(
 users = db.fetch("SELECT * FROM users WHERE name = :name", {"name": "John Doe"})
 print(users)  # [{'id': 1, 'name': 'John Doe', 'email': 'john@example.com'}]
 
-# Bulk insert
+# Bulk insert using execute method
 users_data = [
     {"name": "Jane Smith", "email": "jane@example.com"},
     {"name": "Bob Johnson", "email": "bob@example.com"}
 ]
-db.bulk_insert(
+count = db.execute(
     "INSERT INTO users (name, email) VALUES (:name, :email)",
     users_data
 )
+print(f"Inserted {count} users")
 
 # Cleanup
 db.shutdown()
 ```
+
+## API Changes
+
+The library has been simplified to use a consolidated API:
+
+- **`execute()`** now handles both single operations and bulk operations
+- **`bulk_insert()` and `bulk_update()`** methods have been removed
+- **`fetch()`** remains unchanged for SELECT operations
+
+### Migration Guide
+
+If you're upgrading from an older version, here are the changes needed:
+
+```python
+# Old API
+db.bulk_insert("INSERT INTO users (name) VALUES (:name)", user_data)
+db.bulk_update("UPDATE users SET status = :status WHERE id = :id", update_data)
+
+# New API
+count = db.execute("INSERT INTO users (name) VALUES (:name)", user_data)
+count = db.execute("UPDATE users SET status = :status WHERE id = :id", update_data)
+```
+
+The `execute()` method now returns:
+- `True` for single operations
+- `int` (count) for bulk operations
 
 ## API Reference
 
@@ -96,11 +123,17 @@ DbEngine(database_url: str, **kwargs)
 #### Methods
 
 ##### execute(query, params=None)
-Execute a non-query SQL statement (INSERT, UPDATE, DELETE, etc.).
+Execute a non-query SQL statement (INSERT, UPDATE, DELETE, etc.). Handles both single operations and bulk operations.
 
 ```python
+# Single operation
 db.execute("UPDATE users SET name = :name WHERE id = :id", 
           {"name": "New Name", "id": 1})
+
+# Bulk operation
+updates = [{"id": 1, "status": "active"}, {"id": 2, "status": "inactive"}]
+count = db.execute("UPDATE users SET status = :status WHERE id = :id", updates)
+print(f"Updated {count} users")
 ```
 
 ##### fetch(query, params=None)
@@ -111,29 +144,13 @@ results = db.fetch("SELECT * FROM users WHERE age > :min_age",
                   {"min_age": 18})
 ```
 
-##### bulk_insert(query, params_list)
-Perform efficient bulk insert operations.
-
-```python
-data = [{"name": "User1"}, {"name": "User2"}]
-db.bulk_insert("INSERT INTO users (name) VALUES (:name)", data)
-```
-
-##### bulk_update(query, params_list)
-Perform efficient bulk update operations.
-
-```python
-updates = [{"id": 1, "status": "active"}, {"id": 2, "status": "inactive"}]
-db.bulk_update("UPDATE users SET status = :status WHERE id = :id", updates)
-```
-
 ##### execute_transaction(operations)
 Execute multiple operations in a single transaction.
 
 ```python
 operations = [
-    {"query": "INSERT INTO users (name) VALUES (:name)", "params": {"name": "User1"}},
-    {"query": "UPDATE counters SET user_count = user_count + 1", "params": None}
+    {"type": "execute", "query": "INSERT INTO users (name) VALUES (:name)", "params": {"name": "User1"}},
+    {"type": "fetch", "query": "SELECT COUNT(*) as count FROM users"}
 ]
 results = db.execute_transaction(operations)
 ```

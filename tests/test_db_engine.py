@@ -83,7 +83,7 @@ class TestDbEngine(unittest.TestCase):
         INSERT INTO test_users (name, email, active) 
         VALUES (:name, :email, :active)
         """
-        self.db_engine.bulk_insert(insert_sql, test_data)
+        self.db_engine.execute(insert_sql, test_data)
     
     def test_init_with_default_parameters(self):
         """Test DbEngine initialization with default parameters."""
@@ -174,8 +174,8 @@ class TestDbEngine(unittest.TestCase):
         self.assertEqual(len(users), 0)
         self.assertIsInstance(users, list)
     
-    def test_bulk_insert(self):
-        """Test bulk insert operation."""
+    def test_bulk_operations(self):
+        """Test bulk operations using execute method."""
         test_data = [
             {"name": "User1", "email": "user1@example.com", "active": True},
             {"name": "User2", "email": "user2@example.com", "active": False},
@@ -187,15 +187,15 @@ class TestDbEngine(unittest.TestCase):
         VALUES (:name, :email, :active)
         """
         
-        result = self.db_engine.bulk_insert(insert_sql, test_data)
+        result = self.db_engine.execute(insert_sql, test_data)
         self.assertEqual(result, 3)
         
         # Verify data was inserted
         users = self.db_engine.fetch("SELECT * FROM test_users WHERE name LIKE 'User%'")
         self.assertEqual(len(users), 3)
     
-    def test_bulk_update(self):
-        """Test bulk update operation."""
+    def test_bulk_update_operations(self):
+        """Test bulk update operations using execute method."""
         # Insert test data first
         self._insert_test_data()
         
@@ -207,7 +207,7 @@ class TestDbEngine(unittest.TestCase):
         ]
         
         update_sql = "UPDATE test_users SET active = :active WHERE id = :id"
-        result = self.db_engine.bulk_update(update_sql, update_data)
+        result = self.db_engine.execute(update_sql, update_data)
         self.assertEqual(result, 3)
         
         # Verify updates
@@ -395,7 +395,7 @@ class TestDbEngine(unittest.TestCase):
         
         # Time the bulk insert
         start_time = time.time()
-        result = self.db_engine.bulk_insert(insert_sql, large_data)
+        result = self.db_engine.execute(insert_sql, large_data)
         end_time = time.time()
         
         self.assertEqual(result, 1000)
@@ -442,7 +442,7 @@ class TestDbEngine(unittest.TestCase):
         VALUES (:name, :email, :active)
         """
         
-        self.db_engine.bulk_insert(insert_sql, test_data)
+        self.db_engine.execute(insert_sql, test_data)
         
         # Fetch and verify
         users = self.db_engine.fetch("SELECT * FROM test_users WHERE name IN (:name1, :name2, :name3)",
@@ -507,7 +507,7 @@ class TestDbEngineEdgeCases(unittest.TestCase):
         """Test handling of invalid operation type."""
         db = DbEngine(self.database_url)
         
-        # Create request with invalid operation
+        # Create request with invalid operation (not 'fetch' or 'execute')
         request = DbRequest('invalid_operation', 'SELECT 1', None, queue.Queue())
         
         # This should be handled gracefully
