@@ -220,12 +220,12 @@ class TestDbEngine(unittest.TestCase):
         """Test successful transaction execution."""
         operations = [
             {
-                "type": "execute",
+                "operation": "execute",
                 "query": "INSERT INTO test_users (name, email, active) VALUES (:name, :email, :active)",
                 "params": {"name": "TransactionUser", "email": "transaction@example.com", "active": True}
             },
             {
-                "type": "fetch",
+                "operation": "fetch",
                 "query": "SELECT COUNT(*) as count FROM test_users WHERE name = :name",
                 "params": {"name": "TransactionUser"}
             }
@@ -258,12 +258,12 @@ class TestDbEngine(unittest.TestCase):
         
         operations = [
             {
-                "type": "execute",
+                "operation": "execute",
                 "query": "UPDATE test_users SET active = :active WHERE name = :name",
                 "params": {"active": False, "name": "Alice Johnson"}
             },
             {
-                "type": "execute",
+                "operation": "execute",
                 "query": "UPDATE test_users SET invalid_column = :value WHERE name = :name",
                 "params": {"value": "test", "name": "Bob Smith"}
             }
@@ -412,12 +412,12 @@ class TestDbEngine(unittest.TestCase):
         
         # Mix of operations
         operations = [
-            {"type": "fetch", "query": "SELECT COUNT(*) as count FROM test_users"},
-            {"type": "execute", "query": "INSERT INTO test_users (name, email, active) VALUES (:name, :email, :active)",
+            {"operation": "fetch", "query": "SELECT COUNT(*) as count FROM test_users"},
+            {"operation": "execute", "query": "INSERT INTO test_users (name, email, active) VALUES (:name, :email, :active)",
              "params": {"name": "MixedUser", "email": "mixed@example.com", "active": True}},
-            {"type": "fetch", "query": "SELECT * FROM test_users WHERE name = :name",
+            {"operation": "fetch", "query": "SELECT * FROM test_users WHERE name = :name",
              "params": {"name": "MixedUser"}},
-            {"type": "execute", "query": "UPDATE test_users SET active = :active WHERE name = :name",
+            {"operation": "execute", "query": "UPDATE test_users SET active = :active WHERE name = :name",
              "params": {"active": False, "name": "MixedUser"}}
         ]
         
