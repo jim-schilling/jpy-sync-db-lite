@@ -197,6 +197,123 @@ All operations are thread-safe through:
 - Proper connection management per operation
 - Lock-protected statistics updates
 
+## Performance Testing
+
+The library includes comprehensive performance testing tools to help you optimize your database operations.
+
+### Quick Performance Check
+
+Run the standalone benchmark script for a quick performance overview:
+
+```bash
+# Run all benchmarks
+python tests/benchmark_db_engine.py
+
+# Run specific tests
+python tests/benchmark_db_engine.py --tests single bulk select scaling
+
+# Customize parameters
+python tests/benchmark_db_engine.py --operations 2000 --workers 2 --batch-sizes 100 500 1000
+```
+
+### Comprehensive Performance Tests
+
+Run the full unittest suite for detailed performance analysis:
+
+```bash
+# Run all performance tests
+python -m unittest tests.test_db_engine_performance -v
+
+# Run specific test categories
+python -m unittest tests.test_db_engine_performance.TestDbEnginePerformance.test_single_insert_performance -v
+python -m unittest tests.test_db_engine_performance.TestDbEnginePerformance.test_bulk_insert_performance -v
+python -m unittest tests.test_db_engine_performance.TestDbEnginePerformance.test_select_performance -v
+```
+
+### Performance Test Categories
+
+#### 1. Single Insert Performance
+- Measures individual insert operation latency and throughput
+- **Expected**: >50 ops/sec, <100ms average latency
+
+#### 2. Bulk Insert Performance
+- Tests different batch sizes (10, 50, 100, 500, 1000 records)
+- Measures throughput and per-record latency
+- **Expected**: >100 ops/sec for optimal batch sizes
+
+#### 3. Select Performance
+- Tests various query types:
+  - Simple SELECT with LIMIT
+  - Filtered SELECT with WHERE clauses
+  - Indexed SELECT using indexed columns
+  - Aggregate SELECT with COUNT/AVG
+  - Complex SELECT with multiple conditions and ORDER BY
+- **Expected**: >200 ops/sec for simple selects
+
+#### 4. Concurrent Operations Performance
+- Tests performance under concurrent load (1, 2, 4, 8 threads)
+- Mix of read and write operations
+- **Expected**: >50 ops/sec under load
+
+#### 5. Transaction Performance
+- Tests transaction operations with different sizes
+- **Expected**: >50 ops/sec for transactions
+
+#### 6. Worker Thread Scaling
+- Tests performance with different worker thread configurations
+- Helps determine optimal worker count
+- **Expected**: >30 ops/sec with single worker
+
+### Performance Metrics
+
+The tests measure:
+
+- **Throughput**: Operations per second (ops/sec)
+- **Latency**: Time per operation in milliseconds
+- **Memory Usage**: Memory consumption and growth rate (requires `psutil`)
+- **Concurrency Scaling**: Performance with multiple threads
+
+### Performance Expectations
+
+Based on SQLite with WAL mode and optimized pragmas:
+
+| Operation Type | Expected Throughput | Expected Latency |
+|----------------|-------------------|------------------|
+| Single Insert  | >50 ops/sec       | <100ms avg       |
+| Bulk Insert    | >100 ops/sec      | <50ms per record |
+| Simple Select  | >200 ops/sec      | <10ms avg        |
+| Complex Select | >50 ops/sec       | <50ms avg        |
+| Transactions   | >50 ops/sec       | <100ms avg       |
+
+### Optimization Recommendations
+
+The performance tests provide recommendations for:
+- **Optimal batch sizes** for bulk operations
+- **Optimal worker threads** for your workload
+- **Memory efficiency** analysis
+- **Scaling considerations** for concurrent operations
+
+### Memory Monitoring
+
+Memory usage monitoring requires the `psutil` package:
+
+```bash
+pip install psutil
+```
+
+Without `psutil`, the tests will run but skip memory measurements.
+
+### Performance Troubleshooting
+
+Common performance issues and solutions:
+
+1. **Low throughput**: Use batch operations, optimize worker count
+2. **High latency**: Check for blocking operations, monitor system resources
+3. **Memory growth**: Look for unclosed connections or large result sets
+4. **Concurrency issues**: SQLite has limitations with concurrent writes
+
+For detailed performance analysis, see [tests/PERFORMANCE_TESTS.md](tests/PERFORMANCE_TESTS.md).
+
 ## Development
 
 ### Running Tests

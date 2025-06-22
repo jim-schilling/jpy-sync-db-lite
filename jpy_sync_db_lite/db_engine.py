@@ -215,7 +215,7 @@ class DbEngine:
         
         Args:
             operations: List of operation dictionaries with keys:
-                - 'type': Operation type ('fetch' or 'execute')
+                - 'operation': Operation type ('fetch' or 'execute')
                 - 'query': SQL query string
                 - 'params': Query parameters (optional)
                 
@@ -230,12 +230,12 @@ class DbEngine:
             try:
                 results = []
                 for op in operations:
-                    if 'type' not in op:
+                    if 'operation' not in op:
                         raise ValueError("Operation type is required")
-                    if op['type'] == 'fetch':
+                    if op['operation'] == 'fetch':
                         result = conn.execute(text(op['query']), op.get('params', {}))
                         results.append([dict(row._mapping) for row in result.fetchall()])
-                    elif op['type'] == 'execute':
+                    elif op['operation'] == 'execute':
                         params = op.get('params', {})
                         if isinstance(params, list):
                             conn.execute(text(op['query']), params)
@@ -244,7 +244,7 @@ class DbEngine:
                             conn.execute(text(op['query']), params)
                             results.append(True)  # Return True for single operations
                     else:
-                        raise ValueError(f"Unsupported operation type: {op['type']}")
+                        raise ValueError(f"Unsupported operation type: {op['operation']}")
                 
                 trans.commit()
                 return results
@@ -330,9 +330,9 @@ if __name__ == "__main__":
     
     # Transaction for complex operations
     operations = [
-        {"type": "execute", "query": "UPDATE users SET last_login = :now WHERE id = :id", 
+        {"operation": "execute", "query": "UPDATE users SET last_login = :now WHERE id = :id", 
          "params": {"now": time.time(), "id": 1}},
-        {"type": "fetch", "query": "SELECT COUNT(*) as count FROM users"}
+        {"operation": "fetch", "query": "SELECT COUNT(*) as count FROM users"}
     ]
     results = db.execute_transaction(operations)
     
