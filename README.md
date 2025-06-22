@@ -375,17 +375,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 5. Ensure all tests pass
 6. Submit a pull request
 
-## Changelog
-
-### 0.1.0
-- Initial release
-- Thread-safe SQLite operations
-- SQLAlchemy 2.0+ compatibility
-- Performance optimizations
-- Bulk operations support
-- Automatic backup system with periodic and manual backup capabilities
-- Backup performance testing and monitoring tools
-
 ## Backup System
 
 The library includes a comprehensive backup system that provides both automatic periodic backups and manual backup requests.
@@ -536,3 +525,24 @@ Backup files are standard SQLite database files with:
 3. **Test backup restoration** periodically
 4. **Use manual backups** before major operations
 5. **Monitor backup statistics** for system health
+
+## Changelog
+
+### [Unreleased]
+- Performance improvements and optimizations
+- Enhanced error handling and logging
+- Additional performance testing scenarios
+
+### 0.1.2 (2025-01-22)
+- Thread-safe SQLite operations with worker thread pool
+- SQLAlchemy 2.0+ compatibility with modern async patterns
+- Performance optimizations with SQLite-specific pragmas
+- Consolidated API with `execute()` method handling both single and bulk operations
+- Transaction support for complex operations
+- Statistics tracking for monitoring performance
+- Comprehensive backup system with periodic and manual backup capabilities
+- Backup performance testing and monitoring tools
+- Extensive performance testing suite with benchmarks
+- Memory usage monitoring (requires `psutil`)
+- Thread safety through proper connection management
+- WAL mode and optimized cache settings for better concurrency
