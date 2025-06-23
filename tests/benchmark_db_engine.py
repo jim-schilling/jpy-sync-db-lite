@@ -584,6 +584,7 @@ class DbEngineBenchmark:
     def _print_bulk_insert_results(self, results: Dict[str, Any]):
         """Print bulk insert benchmark results."""
         print(f"Bulk Insert Performance:")
+        print(f"  Batch Size | Throughput (ops/sec) | Avg Latency per Record (ms)")
         print(f"{'-'*12} {'-'*15} {'-'*20}")
         
         for batch_size, batch_results in results['results'].items():
