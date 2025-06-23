@@ -13,6 +13,7 @@ A lightweight, thread-safe SQLite database wrapper built on SQLAlchemy with opti
 - **Consolidated operations** for both single and bulk operations
 - **Transaction support** for complex operations
 - **Statistics tracking** for monitoring performance
+- **Automatic backup system** with periodic and manual backup capabilities
 
 ## Installation
 
@@ -40,8 +41,13 @@ pip install -e ".[dev]"
 ```python
 from jpy_sync_db_lite import DbEngine
 
-# Initialize database engine
-db = DbEngine('sqlite:///my_database.db', num_workers=2, debug=False)
+# Initialize database engine with backup enabled
+db = DbEngine('sqlite:///my_database.db', 
+              num_workers=2, 
+              debug=False,
+              backup_enabled=True,
+              backup_interval=3600,  # 1 hour
+              backup_dir='./backups')
 
 # Create a table
 db.execute("""
@@ -62,16 +68,13 @@ db.execute(
 users = db.fetch("SELECT * FROM users WHERE name = :name", {"name": "John Doe"})
 print(users)  # [{'id': 1, 'name': 'John Doe', 'email': 'john@example.com'}]
 
-# Bulk insert using execute method
-users_data = [
-    {"name": "Jane Smith", "email": "jane@example.com"},
-    {"name": "Bob Johnson", "email": "bob@example.com"}
-]
-count = db.execute(
-    "INSERT INTO users (name, email) VALUES (:name, :email)",
-    users_data
-)
-print(f"Inserted {count} users")
+# Request immediate backup
+success = db.request_backup()
+print(f"Backup completed: {success}")
+
+# Get backup information
+backup_info = db.get_backup_info()
+print(f"Total backups: {backup_info['total_backups']}")
 
 # Cleanup
 db.shutdown()
@@ -119,6 +122,11 @@ DbEngine(database_url: str, **kwargs)
 - `database_url`: SQLAlchemy database URL (e.g., 'sqlite:///database.db')
 - `num_workers`: Number of worker threads (default: 1)
 - `debug`: Enable SQLAlchemy echo mode (default: False)
+- `backup_enabled`: Enable backup system (default: False)
+- `backup_interval`: Backup interval in seconds (default: 3600)
+- `backup_dir`: Backup directory path (default: './backups')
+- `backup_cleanup_enabled`: Enable automatic backup cleanup (default: True)
+- `backup_cleanup_keep_count`: Number of backups to keep (default: 10)
 
 #### Methods
 
@@ -149,10 +157,28 @@ Execute multiple operations in a single transaction.
 
 ```python
 operations = [
-    {"type": "execute", "query": "INSERT INTO users (name) VALUES (:name)", "params": {"name": "User1"}},
-    {"type": "fetch", "query": "SELECT COUNT(*) as count FROM users"}
+    {"operation": "execute", "query": "INSERT INTO users (name) VALUES (:name)", "params": {"name": "User1"}},
+    {"operation": "fetch", "query": "SELECT COUNT(*) as count FROM users"}
 ]
 results = db.execute_transaction(operations)
+```
+
+##### request_backup()
+Request an immediate backup operation.
+
+```python
+success = db.request_backup()
+if success:
+    print("Backup completed successfully")
+```
+
+##### get_backup_info()
+Get detailed backup information and file list.
+
+```python
+backup_info = db.get_backup_info()
+print(f"Total backups: {backup_info['total_backups']}")
+print(f"Backup files: {len(backup_info.get('backup_files', []))}")
 ```
 
 ##### get_raw_connection()
@@ -170,6 +196,7 @@ Get database operation statistics.
 ```python
 stats = db.get_stats()
 print(f"Requests: {stats['requests']}, Errors: {stats['errors']}")
+print(f"Backups: {stats['backups']}")
 ```
 
 ##### shutdown()
@@ -212,6 +239,9 @@ python tests/benchmark_db_engine.py
 # Run specific tests
 python tests/benchmark_db_engine.py --tests single bulk select scaling
 
+# Run backup performance tests
+python tests/benchmark_db_engine.py --tests backup --backup-enabled
+
 # Customize parameters
 python tests/benchmark_db_engine.py --operations 2000 --workers 2 --batch-sizes 100 500 1000
 ```
@@ -223,6 +253,9 @@ Run the full unittest suite for detailed performance analysis:
 ```bash
 # Run all performance tests
 python -m unittest tests.test_db_engine_performance -v
+
+# Run backup performance tests
+python -m unittest tests.test_backup_performance -v
 
 # Run specific test categories
 python -m unittest tests.test_db_engine_performance.TestDbEnginePerformance.test_single_insert_performance -v
@@ -264,6 +297,12 @@ python -m unittest tests.test_db_engine_performance.TestDbEnginePerformance.test
 - Helps determine optimal worker count
 - **Expected**: >30 ops/sec with single worker
 
+#### 7. Backup Performance
+- Tests backup performance with different dataset sizes
+- Measures backup time, throughput, and data transfer rates
+- Tests backup integrity and verification
+- **Expected**: >100 rows/sec backup rate, <15 seconds for 5K rows
+
 ### Performance Metrics
 
 The tests measure:
@@ -272,6 +311,7 @@ The tests measure:
 - **Latency**: Time per operation in milliseconds
 - **Memory Usage**: Memory consumption and growth rate (requires `psutil`)
 - **Concurrency Scaling**: Performance with multiple threads
+- **Backup Performance**: Backup time, rate, and data transfer speed
 
 ### Performance Expectations
 
@@ -284,6 +324,7 @@ Based on SQLite with WAL mode and optimized pragmas:
 | Simple Select  | >200 ops/sec      | <10ms avg        |
 | Complex Select | >50 ops/sec       | <50ms avg        |
 | Transactions   | >50 ops/sec       | <100ms avg       |
+| Backup         | >100 rows/sec     | <15s for 5K rows |
 
 ### Optimization Recommendations
 
@@ -334,11 +375,174 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 5. Ensure all tests pass
 6. Submit a pull request
 
+## Backup System
+
+The library includes a comprehensive backup system that provides both automatic periodic backups and manual backup requests.
+
+### Backup Configuration
+
+When initializing the database engine, you can configure backup behavior:
+
+```python
+db = DbEngine('sqlite:///my_database.db',
+              backup_enabled=True,           # Enable backup system
+              backup_interval=3600,          # Backup every hour (seconds)
+              backup_dir='./backups',        # Backup directory
+              backup_cleanup_enabled=True,   # Enable automatic cleanup
+              backup_cleanup_keep_count=10)  # Keep last 10 backups
+```
+
+**Configuration Parameters:**
+- `backup_enabled`: Enable/disable the backup system (default: False)
+- `backup_interval`: Time between automatic backups in seconds (default: 3600)
+- `backup_dir`: Directory to store backup files (default: './backups')
+- `backup_cleanup_enabled`: Enable automatic cleanup of old backups (default: True)
+- `backup_cleanup_keep_count`: Number of recent backups to keep (default: 10)
+
+### Backup Features
+
+#### Automatic Periodic Backups
+- **Background thread** runs independently of database operations
+- **Configurable intervals** from seconds to hours
+- **Thread-safe** with proper locking to prevent concurrent backups
+- **WAL checkpointing** ensures data consistency
+
+#### Manual Backup Requests
+- **Immediate backup** on demand
+- **Non-blocking** - returns immediately if backup is already in progress
+- **Thread-safe** with proper error handling
+
+#### Backup File Management
+- **Timestamped filenames** (e.g., `backup_20250122_143052.sqlite`)
+- **Automatic cleanup** of old backups
+- **File integrity verification** during backup process
+- **Size and modification time tracking**
+
+### Backup API Methods
+
+#### request_backup()
+Request an immediate backup operation.
+
+```python
+success = db.request_backup()
+if success:
+    print("Backup completed successfully")
+```
+
+#### get_backup_info()
+Get detailed backup information and file list.
+
+```python
+backup_info = db.get_backup_info()
+print(f"Total backups: {backup_info['total_backups']}")
+print(f"Backup files: {len(backup_info.get('backup_files', []))}")
+```
+
+#### get_stats()
+Get backup statistics along with other performance metrics.
+
+```python
+stats = db.get_stats()
+print(f"Total backups: {stats['backups']}")
+print(f"Backup enabled: {stats['backup_enabled']}")
+print(f"Last backup time: {stats['last_backup_time']}")
+```
+
+### Backup Examples
+
+#### Basic Backup Setup
+```python
+from jpy_sync_db_lite import DbEngine
+
+# Initialize with backup enabled
+db = DbEngine('sqlite:///app.db',
+              backup_enabled=True,
+              backup_interval=1800,  # 30 minutes
+              backup_dir='./database_backups')
+
+# Database operations continue normally
+db.execute("INSERT INTO users (name) VALUES (:name)", {"name": "Alice"})
+
+# Manual backup when needed
+if important_operation_completed:
+    db.request_backup()
+```
+
+#### Backup Monitoring
+```python
+# Check backup status
+backup_info = db.get_backup_info()
+if backup_info['enabled']:
+    print(f"Backup system is active")
+    print(f"Next automatic backup in: {backup_info['interval_seconds']} seconds")
+    
+    if backup_info['backup_files']:
+        latest_backup = backup_info['backup_files'][0]
+        print(f"Latest backup: {latest_backup['filename']}")
+        print(f"Size: {latest_backup['size_bytes'] / 1024 / 1024:.2f} MB")
+    else:
+        print("No backups created yet")
+```
+
+#### Backup Verification
+```python
+# Verify backup integrity by opening backup file
+backup_info = db.get_backup_info()
+if backup_info['backup_files']:
+    latest_backup = backup_info['backup_files'][0]
+    
+    # Create temporary engine to verify backup
+    backup_db = DbEngine(f"sqlite:///{latest_backup['path']}")
+    try:
+        # Verify data exists in backup
+        user_count = backup_db.fetch("SELECT COUNT(*) as count FROM users")
+        print(f"Backup contains {user_count[0]['count']} users")
+    finally:
+        backup_db.shutdown()
+```
+
+### Backup Performance
+
+The backup system is designed for minimal impact on database performance:
+
+- **WAL checkpointing** ensures fast, consistent backups
+- **Non-blocking operations** during backup process
+- **Background thread** doesn't interfere with database operations
+- **Optimized file copying** with retry logic
+
+### Backup File Format
+
+Backup files are standard SQLite database files with:
+- **Timestamped naming**: `backup_YYYYMMDD_HHMMSS.sqlite`
+- **Full database copy** including all tables, indexes, and data
+- **WAL checkpointed** for data consistency
+- **Compressed storage** (SQLite's built-in compression)
+
+### Backup Best Practices
+
+1. **Configure appropriate intervals** based on data change frequency
+2. **Monitor backup directory size** and adjust cleanup settings
+3. **Test backup restoration** periodically
+4. **Use manual backups** before major operations
+5. **Monitor backup statistics** for system health
+
 ## Changelog
 
-### 0.1.0
-- Initial release
-- Thread-safe SQLite operations
-- SQLAlchemy 2.0+ compatibility
-- Performance optimizations
-- Bulk operations support
+### [Unreleased]
+- Performance improvements and optimizations
+- Enhanced error handling and logging
+- Additional performance testing scenarios
+
+### 0.1.2 (2025-01-22)
+- Thread-safe SQLite operations with worker thread pool
+- SQLAlchemy 2.0+ compatibility with modern async patterns
+- Performance optimizations with SQLite-specific pragmas
+- Consolidated API with `execute()` method handling both single and bulk operations
+- Transaction support for complex operations
+- Statistics tracking for monitoring performance
+- Comprehensive backup system with periodic and manual backup capabilities
+- Backup performance testing and monitoring tools
+- Extensive performance testing suite with benchmarks
+- Memory usage monitoring (requires `psutil`)
+- Thread safety through proper connection management
+- WAL mode and optimized cache settings for better concurrency
