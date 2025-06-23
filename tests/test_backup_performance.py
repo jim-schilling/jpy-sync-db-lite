@@ -186,6 +186,7 @@ class TestBackupPerformance(unittest.TestCase):
         if not backup_files:
             raise Exception("No backup file found")
         
+        backup_files.sort(key=lambda f: os.path.getmtime(os.path.join(self.backup_dir, f)), reverse=True)
         backup_file_path = os.path.join(self.backup_dir, backup_files[0])
         backup_size = os.path.getsize(backup_file_path)
         
