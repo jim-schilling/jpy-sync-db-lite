@@ -81,7 +81,7 @@ DbEngine(database_url: str, **kwargs)
 
 **Parameters:**
 - `database_url`: SQLAlchemy database URL (e.g., 'sqlite:///database.db')
-- `num_workers`: Number of worker threads (default: 1)
+- `num_workers`: Number of worker threads (default: 2)
 - `debug`: Enable SQLAlchemy echo mode (default: False)
 
 #### Methods
