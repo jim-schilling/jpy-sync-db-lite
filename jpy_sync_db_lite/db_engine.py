@@ -252,10 +252,9 @@ class DbEngine:
                 self.stats['backups'] += 1
             
             logging.info(f"Checkpoint backup created: {backup_path}")
-            
-            # Skip cleanup for now to avoid hanging
-            # if self.backup_cleanup_enabled:
-            #     self._cleanup_old_backups(self.backup_cleanup_keep_count)
+                        
+            if self.backup_cleanup_enabled:
+                self._cleanup_old_backups(self.backup_cleanup_keep_count)
     
     def _cleanup_old_backups(self, keep_count: int = 10) -> None:
         """
@@ -346,6 +345,7 @@ class DbEngine:
             with self._backup_lock():
                 # Perform backup directly instead of going through worker thread
                 self._perform_checkpoint_backup()
+                self.last_backup_time = time.time()
                 return True
                 
         except RuntimeError:
