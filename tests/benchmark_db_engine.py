@@ -14,7 +14,6 @@ import time
 import statistics
 import argparse
 from typing import List, Dict, Any
-import random
 
 # Try to import psutil for memory monitoring, but make it optional
 try:
@@ -34,7 +33,7 @@ from jpy_sync_db_lite.db_engine import DbEngine
 class DbEngineBenchmark:
     """Benchmark class for DbEngine performance testing."""
     
-    def __init__(self, database_url: str = None, num_workers: int = 1, backup_enabled: bool = False):
+    def __init__(self, database_url: str = None, num_workers: int = 1):
         """Initialize benchmark with database configuration."""
         if database_url is None:
             # Create temporary database
@@ -47,23 +46,8 @@ class DbEngineBenchmark:
             self.temp_db_path = None
         
         self.num_workers = num_workers
-        self.backup_enabled = backup_enabled
         
-        # Create backup directory if backup is enabled
-        if backup_enabled:
-            self.backup_dir = tempfile.mkdtemp(prefix='benchmark_backup_')
-            self.db_engine = DbEngine(
-                self.database_url, 
-                num_workers=num_workers, 
-                debug=False,
-                backup_enabled=True,
-                backup_interval=3600,  # 1 hour for benchmarks
-                backup_dir=self.backup_dir,
-                backup_cleanup_enabled=False  # Disable cleanup during benchmarks
-            )
-        else:
-            self.backup_dir = None
-            self.db_engine = DbEngine(self.database_url, num_workers=num_workers, debug=False)
+        self.db_engine = DbEngine(self.database_url, num_workers=num_workers, debug=False)
         
         self._setup_database()
     
@@ -342,214 +326,6 @@ class DbEngineBenchmark:
             'results': results
         }
     
-    def benchmark_backup_performance(self, dataset_sizes: List[int] = None) -> Dict[str, Any]:
-        """Benchmark backup performance with different dataset sizes."""
-        if dataset_sizes is None:
-            dataset_sizes = [100, 1000, 5000, 10000]
-        
-        if not self.backup_enabled:
-            print("Backup benchmarking requires backup_enabled=True")
-            return {'error': 'Backup not enabled'}
-        
-        print(f"Benchmarking backup performance with dataset sizes: {dataset_sizes}")
-        
-        results = {}
-        
-        for dataset_size in dataset_sizes:
-            print(f"  Testing dataset size: {dataset_size}")
-            
-            # Clear existing data
-            self.db_engine.execute("DELETE FROM benchmark_test")
-            
-            # Populate with test data
-            test_data = self._generate_test_data(dataset_size)
-            self.db_engine.execute(
-                "INSERT INTO benchmark_test (name, value, data) VALUES (:name, :value, :data)",
-                test_data
-            )
-            
-            # Get database size before backup
-            db_path = self.db_engine.engine.url.database
-            if not os.path.isabs(db_path):
-                db_path = os.path.abspath(db_path)
-            
-            db_size_before = os.path.getsize(db_path)
-            
-            # Benchmark backup
-            latencies = []
-            num_backups = 3  # Reduced from 5 for faster testing
-            
-            for i in range(num_backups):
-                op_start = time.time()
-                success = self.db_engine.request_backup()
-                op_end = time.time()
-                
-                if success:
-                    latencies.append((op_end - op_start) * 1000)
-                else:
-                    print(f"    Backup {i+1} failed")
-            
-            if latencies:
-                # Get backup file size
-                backup_info = self.db_engine.get_backup_info()
-                backup_files = backup_info.get('backup_files', [])
-                backup_size = backup_files[-1]['size_bytes'] if backup_files else 0
-                
-                results[dataset_size] = {
-                    'dataset_size': dataset_size,
-                    'db_size_bytes': db_size_before,
-                    'backup_size_bytes': backup_size,
-                    'compression_ratio': backup_size / db_size_before if db_size_before > 0 else 0,
-                    'num_backups': len(latencies),
-                    'latency_ms': latencies,
-                    'avg_latency': statistics.mean(latencies),
-                    'min_latency': min(latencies),
-                    'max_latency': max(latencies),
-                    'median_latency': statistics.median(latencies),
-                    'throughput_mb_per_sec': (db_size_before / 1024 / 1024) / (statistics.mean(latencies) / 1000)
-                }
-            else:
-                results[dataset_size] = {'error': 'All backups failed'}
-        
-        return {
-            'operation': 'backup_performance',
-            'dataset_sizes': dataset_sizes,
-            'results': results
-        }
-    
-    def benchmark_backup_with_concurrent_operations(self, num_operations: int = 500) -> Dict[str, Any]:
-        """Benchmark backup performance while database is actively being used."""
-        if not self.backup_enabled:
-            print("Backup benchmarking requires backup_enabled=True")
-            return {'error': 'Backup not enabled'}
-        
-        print(f"Benchmarking backup with {num_operations} concurrent operations...")
-        
-        # Populate with substantial data
-        test_data = self._generate_test_data(10000)  # Reduced from 50000
-        self.db_engine.execute(
-            "INSERT INTO benchmark_test (name, value, data) VALUES (:name, :value, :data)",
-            test_data
-        )
-        
-        # Track operation results
-        operation_results = {
-            'inserts': {'success': 0, 'failed': 0, 'latencies': []},
-            'updates': {'success': 0, 'failed': 0, 'latencies': []},
-            'selects': {'success': 0, 'failed': 0, 'latencies': []},
-            'backups': {'success': 0, 'failed': 0, 'latencies': []}
-        }
-        
-        import threading
-        import queue
-        
-        # Operation queue
-        op_queue = queue.Queue()
-        results_queue = queue.Queue()
-        
-        def background_operations():
-            """Background thread for database operations."""
-            while True:
-                try:
-                    op = op_queue.get(timeout=1)
-                    if op == 'STOP':
-                        break
-                    
-                    op_type, op_data = op
-                    op_start = time.time()
-                    
-                    try:
-                        if op_type == 'insert':
-                            self.db_engine.execute(
-                                "INSERT INTO benchmark_test (name, value, data) VALUES (:name, :value, :data)",
-                                op_data
-                            )
-                        elif op_type == 'update':
-                            self.db_engine.execute(
-                                "UPDATE benchmark_test SET data = :data WHERE id = :id",
-                                op_data
-                            )
-                        elif op_type == 'select':
-                            self.db_engine.fetch(
-                                "SELECT * FROM benchmark_test WHERE value > :value LIMIT 10",
-                                op_data
-                            )
-                        elif op_type == 'backup':
-                            self.db_engine.request_backup()
-                        
-                        op_end = time.time()
-                        results_queue.put(('success', op_type, (op_end - op_start) * 1000))
-                        
-                    except Exception as e:
-                        op_end = time.time()
-                        results_queue.put(('failed', op_type, (op_end - op_start) * 1000))
-                    
-                    op_queue.task_done()
-                    
-                except queue.Empty:
-                    continue
-        
-        # Start background thread
-        bg_thread = threading.Thread(target=background_operations)
-        bg_thread.start()
-        
-        # Queue operations
-        for i in range(num_operations):
-            op_type = random.choice(['insert', 'update', 'select', 'backup'])
-            
-            if op_type == 'insert':
-                op_data = {
-                    "name": f"ConcurrentUser{i}",
-                    "value": i,
-                    "data": f"Concurrent data {i}"
-                }
-            elif op_type == 'update':
-                op_data = {
-                    "data": f"Updated data {i}",
-                    "id": random.randint(1, 10000)
-                }
-            elif op_type == 'select':
-                op_data = {"value": random.randint(0, 10000)}
-            else:  # backup
-                op_data = None
-            
-            op_queue.put((op_type, op_data))
-        
-        # Wait for all operations to complete
-        op_queue.join()
-        op_queue.put('STOP')
-        bg_thread.join()
-        
-        # Collect results
-        while not results_queue.empty():
-            status, op_type, latency = results_queue.get()
-            if status == 'success':
-                operation_results[op_type + 's']['success'] += 1
-            else:
-                operation_results[op_type + 's']['failed'] += 1
-            operation_results[op_type + 's']['latencies'].append(latency)
-        
-        # Calculate statistics
-        stats = {}
-        for op_type, results in operation_results.items():
-            if results['latencies']:
-                stats[op_type] = {
-                    'total_operations': results['success'] + results['failed'],
-                    'success_rate': results['success'] / (results['success'] + results['failed']),
-                    'avg_latency': statistics.mean(results['latencies']),
-                    'median_latency': statistics.median(results['latencies']),
-                    'min_latency': min(results['latencies']),
-                    'max_latency': max(results['latencies'])
-                }
-            else:
-                stats[op_type] = {'error': 'No operations completed'}
-        
-        return {
-            'operation': 'backup_with_concurrent_operations',
-            'num_operations': num_operations,
-            'results': stats
-        }
-    
     def print_results(self, results: Dict[str, Any]):
         """Print benchmark results in a formatted way."""
         print(f"\n{'='*80}")
@@ -564,10 +340,6 @@ class DbEngineBenchmark:
             self._print_select_results(results)
         elif results['operation'] == 'worker_scaling':
             self._print_worker_scaling_results(results)
-        elif results['operation'] == 'backup_performance':
-            self._print_backup_performance_results(results)
-        elif results['operation'] == 'backup_with_concurrent_operations':
-            self._print_backup_with_concurrent_operations_results(results)
     
     def _print_single_insert_results(self, results: Dict[str, Any]):
         """Print single insert benchmark results."""
@@ -611,49 +383,10 @@ class DbEngineBenchmark:
             print(f"{num_workers:<10} {worker_results['throughput']:<15.2f} "
                   f"{worker_results['avg_latency']:<15.2f}")
     
-    def _print_backup_performance_results(self, results: Dict[str, Any]):
-        """Print backup performance benchmark results."""
-        print(f"\nBackup Performance Results:")
-        print(f"{'Dataset Size':<15} {'DB Size (MB)':<15} {'Backup Size (MB)':<15} {'Compression':<15} {'Throughput (MB/s)':<15}")
-        print(f"{'-'*15} {'-'*15} {'-'*15} {'-'*15} {'-'*15}")
-        
-        for dataset_size, backup_results in results['results'].items():
-            if 'error' not in backup_results:
-                db_size_mb = backup_results['db_size_bytes'] / 1024 / 1024
-                backup_size_mb = backup_results['backup_size_bytes'] / 1024 / 1024
-                compression = backup_results['compression_ratio']
-                throughput = backup_results['throughput_mb_per_sec']
-                
-                print(f"{dataset_size:<15} {db_size_mb:<15.2f} {backup_size_mb:<15.2f} "
-                      f"{compression:<15.4f} {throughput:<15.2f}")
-            else:
-                print(f"{dataset_size:<15} {backup_results['error']}")
-    
-    def _print_backup_with_concurrent_operations_results(self, results: Dict[str, Any]):
-        """Print backup with concurrent operations benchmark results."""
-        print(f"\nBackup with Concurrent Operations Results:")
-        print(f"{'Operation':<20} {'Total Ops':<15} {'Success Rate':<15} {'Avg Latency (ms)':<15}")
-        print(f"{'-'*20} {'-'*15} {'-'*15} {'-'*15}")
-        
-        for op_type, op_results in results['results'].items():
-            if 'error' not in op_results:
-                print(f"{op_type:<20} {op_results['total_operations']:<15} "
-                      f"{op_results['success_rate']:<15.2%} {op_results['avg_latency']:<15.2f}")
-            else:
-                print(f"{op_type:<20} {op_results['error']}")
-    
     def cleanup(self):
         """Clean up resources."""
         if hasattr(self, 'db_engine'):
             self.db_engine.shutdown()
-        
-        # Clean up backup directory if it exists
-        if hasattr(self, 'backup_dir') and self.backup_dir and os.path.exists(self.backup_dir):
-            try:
-                import shutil
-                shutil.rmtree(self.backup_dir)
-            except Exception as e:
-                print(f"Warning: Could not clean up backup directory {self.backup_dir}: {e}")
         
         # Clean up temporary database file
         if hasattr(self, 'temp_db_path') and self.temp_db_path and os.path.exists(self.temp_db_path):
@@ -674,19 +407,14 @@ def main():
                        help='Batch sizes for bulk insert test')
     parser.add_argument('--worker-configs', nargs='+', type=int, default=[1, 2, 4], 
                        help='Worker thread configurations for scaling test')
-    parser.add_argument('--backup-enabled', action='store_true', help='Enable backup functionality for testing')
-    parser.add_argument('--backup-dataset-sizes', nargs='+', type=int, default=[100, 1000, 5000], 
-                       help='Dataset sizes for backup performance test')
-    parser.add_argument('--backup-concurrent-ops', type=int, default=500, 
-                       help='Number of concurrent operations for backup test')
     parser.add_argument('--tests', nargs='+', 
-                       choices=['single', 'bulk', 'select', 'scaling', 'backup', 'backup_concurrent', 'all'], 
+                       choices=['single', 'bulk', 'select', 'scaling', 'all'], 
                        default=['all'], help='Tests to run')
     
     args = parser.parse_args()
     
     # Initialize benchmark
-    benchmark = DbEngineBenchmark(args.database, args.workers, args.backup_enabled)
+    benchmark = DbEngineBenchmark(args.database, args.workers)
     
     try:
         if 'all' in args.tests or 'single' in args.tests:
@@ -704,20 +432,6 @@ def main():
         if 'all' in args.tests or 'scaling' in args.tests:
             results = benchmark.benchmark_worker_scaling(args.worker_configs)
             benchmark.print_results(results)
-        
-        if 'all' in args.tests or 'backup' in args.tests:
-            if args.backup_enabled:
-                results = benchmark.benchmark_backup_performance(args.backup_dataset_sizes)
-                benchmark.print_results(results)
-            else:
-                print("Skipping backup tests (use --backup-enabled to enable)")
-        
-        if 'all' in args.tests or 'backup_concurrent' in args.tests:
-            if args.backup_enabled:
-                results = benchmark.benchmark_backup_with_concurrent_operations(args.backup_concurrent_ops)
-                benchmark.print_results(results)
-            else:
-                print("Skipping backup concurrent tests (use --backup-enabled to enable)")
     
     finally:
         benchmark.cleanup()
