@@ -11,10 +11,7 @@ import unittest
 import tempfile
 import os
 import time
-import threading
-import queue
 import statistics
-import gc
 from typing import List, Dict, Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -175,7 +172,10 @@ class TestDbEnginePerformance(unittest.TestCase):
         memory_after = self._measure_memory_usage()
         
         # Calculate results
-        throughput = num_operations / total_time
+        if total_time == 0:
+            throughput = float('inf')
+        else:
+            throughput = num_operations / total_time
         
         results = {
             'latency_ms': latencies,
@@ -235,7 +235,10 @@ class TestDbEnginePerformance(unittest.TestCase):
             end_time = time.time()
             total_time = end_time - start_time
             total_operations = num_batches * batch_size
-            throughput = total_operations / total_time
+            if total_time == 0:
+                throughput = float('inf')
+            else:
+                throughput = total_operations / total_time
             
             results_by_batch[batch_size] = {
                 'latency_ms': latencies,
@@ -313,7 +316,10 @@ class TestDbEnginePerformance(unittest.TestCase):
             
             end_time = time.time()
             total_time = end_time - start_time
-            throughput = num_operations / total_time
+            if total_time == 0:
+                throughput = float('inf')
+            else:
+                throughput = num_operations / total_time
             
             results_by_query[query_name] = {
                 'latency_ms': latencies,
@@ -405,7 +411,10 @@ class TestDbEnginePerformance(unittest.TestCase):
             end_time = time.time()
             total_time = end_time - start_time
             total_operations = concurrency * num_ops_per_worker
-            throughput = total_operations / total_time
+            if total_time == 0:
+                throughput = float('inf')
+            else:
+                throughput = total_operations / total_time
             
             results_by_concurrency[concurrency] = {
                 'latency_ms': all_latencies,
@@ -530,7 +539,10 @@ class TestDbEnginePerformance(unittest.TestCase):
             end_time = time.time()
             total_time = end_time - start_time
             total_operations = num_transactions * size
-            throughput = total_operations / total_time
+            if total_time == 0:
+                throughput = float('inf')
+            else:
+                throughput = total_operations / total_time
             
             results_by_size[size] = {
                 'latency_ms': latencies,
@@ -602,7 +614,10 @@ class TestDbEnginePerformance(unittest.TestCase):
             
             end_time = time.time()
             total_time = end_time - start_time
-            throughput = num_operations / total_time
+            if total_time == 0:
+                throughput = float('inf')
+            else:
+                throughput = num_operations / total_time
             
             results_by_workers[num_workers] = {
                 'latency_ms': latencies,
