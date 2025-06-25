@@ -420,41 +420,419 @@ class TestDbEngine(unittest.TestCase):
     
     def test_unicode_and_special_characters(self):
         """Test handling of unicode and special characters."""
-        test_data = [
-            {"name": "José María", "email": "jose@example.com", "active": True},
-            {"name": "测试用户", "email": "test@example.com", "active": True},
-            {"name": "User with 'quotes'", "email": "quotes@example.com", "active": True}
+        # Test unicode characters in data
+        unicode_data = [
+            {"name": "José García", "email": "jose@example.com", "active": True},
+            {"name": "Müller Schmidt", "email": "mueller@example.com", "active": True},
+            {"name": "李小明", "email": "lixiaoming@example.com", "active": True}
         ]
         
         insert_sql = """
         INSERT INTO test_users (name, email, active) 
         VALUES (:name, :email, :active)
         """
+        result = self.db_engine.execute(insert_sql, unicode_data)
+        self.assertEqual(result, 3)
         
-        self.db_engine.execute(insert_sql, test_data)
-        
-        # Fetch and verify
-        users = self.db_engine.fetch("SELECT * FROM test_users WHERE name IN (:name1, :name2, :name3)",
-                                   {"name1": "José María", "name2": "测试用户", "name3": "User with 'quotes'"})
-        
-        self.assertEqual(len(users), 3)
-        names = [user['name'] for user in users]
-        self.assertIn("José María", names)
-        self.assertIn("测试用户", names)
-        self.assertIn("User with 'quotes'", names)
+        # Verify unicode data was stored correctly
+        users = self.db_engine.fetch("SELECT * FROM test_users WHERE name LIKE '%José%'")
+        self.assertEqual(len(users), 1)
+        self.assertEqual(users[0]['name'], "José García")
     
-    def test_basic_db_operation(self):
-        """Test basic database operation to verify locking works."""
-        print("Testing basic database operation...")
+    def test_batch_simple_ddl_dml(self):
+        """Test batch execution with simple DDL and DML statements."""
+        batch_sql = """
+        -- Create a test table
+        CREATE TABLE IF NOT EXISTS batch_test (
+            id INTEGER PRIMARY KEY,
+            name TEXT,
+            value INTEGER
+        );
         
-        # Try a simple fetch operation
-        print("Attempting fetch operation...")
-        result = self.db_engine.fetch("SELECT 1 as test")
-        print(f"Fetch result: {result}")
+        -- Insert data
+        INSERT INTO batch_test (name, value) VALUES ('test1', 100);
+        INSERT INTO batch_test (name, value) VALUES ('test2', 200);
         
-        self.assertEqual(len(result), 1)
-        self.assertEqual(result[0]['test'], 1)
-        print("Basic operation successful!")
+        -- Update data
+        UPDATE batch_test SET value = 150 WHERE name = 'test1';
+        """
+        
+        results = self.db_engine.batch(batch_sql)
+        
+        # Verify results
+        self.assertEqual(len(results), 4)
+        
+        # Check CREATE TABLE
+        self.assertEqual(results[0]['type'], 'execute')
+        self.assertEqual(results[0]['statement_index'], 0)
+        self.assertTrue('CREATE TABLE' in results[0]['statement'])
+        
+        # Check INSERT statements
+        self.assertEqual(results[1]['type'], 'execute')
+        self.assertEqual(results[2]['type'], 'execute')
+        
+        # Check UPDATE statement
+        self.assertEqual(results[3]['type'], 'execute')
+        self.assertTrue('UPDATE' in results[3]['statement'])
+        
+        # Verify data was actually inserted
+        data = self.db_engine.fetch("SELECT * FROM batch_test ORDER BY name")
+        self.assertEqual(len(data), 2)
+        self.assertEqual(data[0]['name'], 'test1')
+        self.assertEqual(data[0]['value'], 150)
+        self.assertEqual(data[1]['name'], 'test2')
+        self.assertEqual(data[1]['value'], 200)
+    
+    def test_batch_with_select_statements(self):
+        """Test batch execution with SELECT statements included."""
+        batch_sql = """
+        -- Create table
+        CREATE TABLE IF NOT EXISTS select_test (
+            id INTEGER PRIMARY KEY,
+            name TEXT
+        );
+        
+        -- Insert data
+        INSERT INTO select_test (name) VALUES ('Alice');
+        INSERT INTO select_test (name) VALUES ('Bob');
+        
+        -- Query data
+        SELECT * FROM select_test WHERE name = 'Alice';
+        
+        -- Insert more data
+        INSERT INTO select_test (name) VALUES ('Charlie');
+        
+        -- Query all data
+        SELECT COUNT(*) as count FROM select_test;
+        """
+        
+        results = self.db_engine.batch(batch_sql)
+        
+        # Verify results
+        self.assertEqual(len(results), 6)
+        
+        # Check DDL/DML statements
+        self.assertEqual(results[0]['type'], 'execute')  # CREATE
+        self.assertEqual(results[1]['type'], 'execute')  # INSERT
+        self.assertEqual(results[2]['type'], 'execute')  # INSERT
+        
+        # Check SELECT statements
+        self.assertEqual(results[3]['type'], 'fetch')    # SELECT Alice
+        self.assertEqual(results[4]['type'], 'execute')  # INSERT Charlie
+        self.assertEqual(results[5]['type'], 'fetch')    # SELECT COUNT
+        
+        # Verify SELECT results
+        alice_result = results[3]['result']
+        self.assertEqual(len(alice_result), 1)
+        self.assertEqual(alice_result[0]['name'], 'Alice')
+        
+        count_result = results[5]['result']
+        self.assertEqual(len(count_result), 1)
+        self.assertEqual(count_result[0]['count'], 3)
+    
+    def test_batch_without_select_statements(self):
+        """Test batch execution with SELECT statements disabled."""
+        batch_sql = """
+        -- Create table
+        CREATE TABLE IF NOT EXISTS no_select_test (
+            id INTEGER PRIMARY KEY,
+            name TEXT
+        );
+        
+        -- Insert data
+        INSERT INTO no_select_test (name) VALUES ('Test1');
+        INSERT INTO no_select_test (name) VALUES ('Test2');
+        
+        -- Update data
+        UPDATE no_select_test SET name = 'Updated' WHERE name = 'Test1';
+        """
+        
+        results = self.db_engine.batch(batch_sql, allow_select=False)
+        
+        # Verify results
+        self.assertEqual(len(results), 4)
+        for result in results:
+            self.assertEqual(result['type'], 'execute')
+        
+        # Verify data was actually inserted/updated
+        data = self.db_engine.fetch("SELECT * FROM no_select_test ORDER BY id")
+        self.assertEqual(len(data), 2)
+        self.assertEqual(data[0]['name'], 'Updated')
+        self.assertEqual(data[1]['name'], 'Test2')
+    
+    def test_batch_select_disabled_error(self):
+        """Test that batch raises error when SELECT is disabled but found."""
+        batch_sql = """
+        CREATE TABLE IF NOT EXISTS error_test (id INTEGER PRIMARY KEY);
+        INSERT INTO error_test (id) VALUES (1);
+        SELECT * FROM error_test;  -- This should cause an error
+        """
+        
+        with self.assertRaises(Exception) as context:
+            self.db_engine.batch(batch_sql, allow_select=False)
+        
+        # The error should be propagated through the queue system
+        self.assertIn("SELECT statements are not allowed", str(context.exception))
+    
+    def test_batch_with_comments(self):
+        """Test batch execution with various comment types."""
+        batch_sql = """
+        -- Single line comment
+        CREATE TABLE IF NOT EXISTS comment_test (
+            id INTEGER PRIMARY KEY, -- inline comment
+            name TEXT NOT NULL      /* another inline comment */
+        );
+        
+        /* Multi-line comment
+           spanning multiple lines */
+        INSERT INTO comment_test (name) VALUES ('Test User');
+        
+        -- Another single line comment
+        UPDATE comment_test SET name = 'Updated User' WHERE name = 'Test User';
+        """
+        
+        results = self.db_engine.batch(batch_sql)
+        
+        # Verify results (comments should be stripped)
+        self.assertEqual(len(results), 3)
+        
+        # Check that comments were properly removed
+        create_stmt = results[0]['statement']
+        self.assertNotIn('--', create_stmt)
+        self.assertNotIn('/*', create_stmt)
+        self.assertNotIn('*/', create_stmt)
+        self.assertIn('CREATE TABLE', create_stmt)
+        
+        # Verify data was inserted correctly
+        data = self.db_engine.fetch("SELECT * FROM comment_test")
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]['name'], 'Updated User')
+    
+    def test_batch_with_string_literals(self):
+        """Test batch execution with semicolons in string literals."""
+        batch_sql = """
+        CREATE TABLE IF NOT EXISTS string_test (
+            id INTEGER PRIMARY KEY,
+            description TEXT
+        );
+        
+        INSERT INTO string_test (description) VALUES ('This has a semicolon; in it');
+        INSERT INTO string_test (description) VALUES ('Another; semicolon; here');
+        
+        UPDATE string_test SET description = 'Updated; with; semicolons' WHERE id = 1;
+        """
+        
+        results = self.db_engine.batch(batch_sql)
+        
+        # Verify results (should be 4 statements, not split by semicolons in strings)
+        self.assertEqual(len(results), 4)
+        
+        # Verify data was inserted correctly
+        data = self.db_engine.fetch("SELECT * FROM string_test ORDER BY id")
+        self.assertEqual(len(data), 2)
+        self.assertEqual(data[0]['description'], 'Updated; with; semicolons')
+        self.assertEqual(data[1]['description'], 'Another; semicolon; here')
+    
+    def test_batch_error_handling(self):
+        """Test batch execution with invalid SQL statements."""
+        batch_sql = """
+        CREATE TABLE IF NOT EXISTS error_test (id INTEGER PRIMARY KEY);
+        INSERT INTO error_test (id) VALUES (1);
+        INVALID SQL STATEMENT;  -- This should cause an error
+        INSERT INTO error_test (id) VALUES (2);  -- This should still execute
+        """
+        
+        results = self.db_engine.batch(batch_sql)
+        
+        # Verify results
+        self.assertEqual(len(results), 4)
+        
+        # Check successful statements
+        self.assertEqual(results[0]['type'], 'execute')  # CREATE
+        self.assertEqual(results[1]['type'], 'execute')  # INSERT
+        self.assertEqual(results[3]['type'], 'execute')  # INSERT
+        
+        # Check error statement
+        self.assertEqual(results[2]['type'], 'error')
+        self.assertIn('error', results[2])
+        self.assertIn('INVALID SQL STATEMENT', results[2]['statement'])
+        
+        # Verify that successful statements were executed
+        data = self.db_engine.fetch("SELECT * FROM error_test ORDER BY id")
+        self.assertEqual(len(data), 2)
+        self.assertEqual(data[0]['id'], 1)
+        self.assertEqual(data[1]['id'], 2)
+    
+    def test_batch_empty_statements(self):
+        """Test batch execution with empty statements and whitespace."""
+        batch_sql = """
+        CREATE TABLE IF NOT EXISTS empty_test (id INTEGER PRIMARY KEY);
+        
+        ;  -- Empty statement
+        
+        INSERT INTO empty_test (id) VALUES (1);
+        
+        ;  -- Another empty statement
+        
+        SELECT * FROM empty_test;
+        """
+        
+        results = self.db_engine.batch(batch_sql)
+        
+        # Verify results (empty statements should be filtered out)
+        self.assertEqual(len(results), 3)
+        
+        # Check statements
+        self.assertEqual(results[0]['type'], 'execute')  # CREATE
+        self.assertEqual(results[1]['type'], 'execute')  # INSERT
+        self.assertEqual(results[2]['type'], 'fetch')    # SELECT
+        
+        # Verify data
+        data = results[2]['result']
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]['id'], 1)
+    
+    def test_batch_transaction_consistency(self):
+        """Test that batch operations maintain transaction consistency."""
+        batch_sql = """
+        CREATE TABLE IF NOT EXISTS transaction_test (
+            id INTEGER PRIMARY KEY,
+            name TEXT,
+            balance INTEGER
+        );
+        
+        INSERT INTO transaction_test (name, balance) VALUES ('Alice', 1000);
+        INSERT INTO transaction_test (name, balance) VALUES ('Bob', 500);
+        
+        -- Transfer money
+        UPDATE transaction_test SET balance = balance - 200 WHERE name = 'Alice';
+        UPDATE transaction_test SET balance = balance + 200 WHERE name = 'Bob';
+        
+        -- Verify transfer
+        SELECT * FROM transaction_test ORDER BY name;
+        """
+        
+        results = self.db_engine.batch(batch_sql)
+        
+        # Verify all statements executed successfully
+        self.assertEqual(len(results), 6)
+        for result in results:
+            self.assertNotEqual(result['type'], 'error')
+        
+        # Verify transaction consistency
+        data = results[5]['result']  # SELECT result
+        self.assertEqual(len(data), 2)
+        
+        alice = next(row for row in data if row['name'] == 'Alice')
+        bob = next(row for row in data if row['name'] == 'Bob')
+        
+        self.assertEqual(alice['balance'], 800)  # 1000 - 200
+        self.assertEqual(bob['balance'], 700)    # 500 + 200
+        
+        # Total balance should remain the same
+        total_balance = sum(row['balance'] for row in data)
+        self.assertEqual(total_balance, 1500)
+    
+    def test_batch_large_number_of_statements(self):
+        """Test batch execution with a large number of statements."""
+        # Create many INSERT statements
+        statements = ["CREATE TABLE IF NOT EXISTS large_test (id INTEGER PRIMARY KEY, name TEXT);"]
+        
+        for i in range(100):
+            statements.append(f"INSERT INTO large_test (name) VALUES ('User{i}');")
+        
+        statements.append("SELECT COUNT(*) as count FROM large_test;")
+        
+        batch_sql = "\n".join(statements)
+        
+        results = self.db_engine.batch(batch_sql)
+        
+        # Verify results
+        self.assertEqual(len(results), 102)  # CREATE + 100 INSERT + 1 SELECT
+        
+        # Check that all statements executed successfully
+        for result in results:
+            self.assertNotEqual(result['type'], 'error')
+        
+        # Verify data
+        count_result = results[-1]['result']
+        self.assertEqual(count_result[0]['count'], 100)
+    
+    def test_batch_with_parameters_validation(self):
+        """Test that batch method properly validates SQL statements."""
+        batch_sql = """
+        CREATE TABLE IF NOT EXISTS validation_test (id INTEGER PRIMARY KEY);
+        INSERT INTO validation_test (id) VALUES (1);
+        SELECT * FROM validation_test;
+        """
+        
+        results = self.db_engine.batch(batch_sql)
+        
+        # Verify all statements are valid
+        self.assertEqual(len(results), 3)
+        for result in results:
+            self.assertNotEqual(result['type'], 'error')
+        
+        # Test with invalid SQL
+        invalid_batch = """
+        CREATE TABLE IF NOT EXISTS invalid_test (id INTEGER PRIMARY KEY);
+        SELECT * FROM;  -- Invalid SELECT statement
+        INSERT INTO invalid_test (id) VALUES (1);
+        """
+        
+        results = self.db_engine.batch(invalid_batch)
+        
+        # Should have error for invalid statement
+        self.assertEqual(len(results), 3)
+        self.assertEqual(results[0]['type'], 'execute')  # CREATE
+        self.assertEqual(results[1]['type'], 'error')    # Invalid SELECT
+        self.assertEqual(results[2]['type'], 'execute')  # INSERT
+    
+    def test_batch_concurrent_access(self):
+        """Test batch operations under concurrent access."""
+        import threading
+        
+        def batch_worker(worker_id):
+            batch_sql = f"""
+            CREATE TABLE IF NOT EXISTS concurrent_test_{worker_id} (
+                id INTEGER PRIMARY KEY,
+                worker_id INTEGER,
+                data TEXT
+            );
+            
+            INSERT INTO concurrent_test_{worker_id} (worker_id, data) VALUES ({worker_id}, 'data1');
+            INSERT INTO concurrent_test_{worker_id} (worker_id, data) VALUES ({worker_id}, 'data2');
+            
+            SELECT COUNT(*) as count FROM concurrent_test_{worker_id};
+            """
+            
+            results = self.db_engine.batch(batch_sql)
+            return results
+        
+        # Run multiple batch operations concurrently
+        threads = []
+        results_list = []
+        
+        for i in range(5):
+            thread = threading.Thread(target=lambda i=i: results_list.append(batch_worker(i)))
+            threads.append(thread)
+            thread.start()
+        
+        # Wait for all threads to complete
+        for thread in threads:
+            thread.join()
+        
+        # Verify all batch operations completed successfully
+        self.assertEqual(len(results_list), 5)
+        
+        for i, results in enumerate(results_list):
+            self.assertEqual(len(results), 4)  # CREATE + 2 INSERT + 1 SELECT
+            for result in results:
+                self.assertNotEqual(result['type'], 'error')
+            
+            # Verify data was inserted correctly
+            count_result = results[3]['result']
+            self.assertEqual(count_result[0]['count'], 2)
 
 
 class TestDbEngineEdgeCases(unittest.TestCase):

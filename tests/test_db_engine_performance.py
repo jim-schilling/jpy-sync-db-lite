@@ -265,6 +265,72 @@ class TestDbEnginePerformance(unittest.TestCase):
         best_throughput = max(r['throughput'] for r in results_by_batch.values())
         self.assertGreater(best_throughput, 100)  # At least 100 ops/sec for bulk operations
     
+    def test_batch_performance(self):
+        """Test performance of the batch method for bulk inserts and mixed statements."""
+        print("\nTesting batch method performance...")
+
+        memory_before = self._measure_memory_usage()
+        batch_sizes = [10, 50, 100, 500, 1000]
+        results_by_batch = {}
+
+        for batch_size in batch_sizes:
+            print(f"  Testing batch size: {batch_size}")
+            # Generate batch SQL for inserts
+            statements = [
+                "CREATE TABLE IF NOT EXISTS batch_perf_test (id INTEGER PRIMARY KEY, name TEXT, value INTEGER);"
+            ]
+            for i in range(batch_size):
+                statements.append(f"INSERT INTO batch_perf_test (name, value) VALUES ('User{i}', {i});")
+            statements.append("SELECT COUNT(*) as count FROM batch_perf_test;")
+            batch_sql = "\n".join(statements)
+
+            # Warm up
+            self.db_engine.batch(batch_sql)
+
+            # Performance test
+            latencies = []
+            num_batches = max(1, 1000 // batch_size)
+            start_time = time.time()
+            for _ in range(num_batches):
+                # Regenerate batch SQL to avoid PK conflicts
+                statements = [
+                    "CREATE TABLE IF NOT EXISTS batch_perf_test (id INTEGER PRIMARY KEY, name TEXT, value INTEGER);"
+                ]
+                offset = _ * batch_size
+                for i in range(batch_size):
+                    statements.append(f"INSERT INTO batch_perf_test (name, value) VALUES ('User{offset}_{i}', {offset + i});")
+                statements.append("SELECT COUNT(*) as count FROM batch_perf_test;")
+                batch_sql = "\n".join(statements)
+
+                op_start = time.time()
+                self.db_engine.batch(batch_sql)
+                op_end = time.time()
+                latencies.append((op_end - op_start) * 1000)
+            end_time = time.time()
+            total_time = end_time - start_time
+            total_operations = num_batches * batch_size
+            throughput = total_operations / total_time if total_time > 0 else float('inf')
+            results_by_batch[batch_size] = {
+                'latency_ms': latencies,
+                'throughput': throughput,
+                'total_time': total_time,
+                'avg_latency_per_record': statistics.mean(latencies) / batch_size
+            }
+
+        memory_after = self._measure_memory_usage()
+        self.performance_results['batch'] = {
+            'by_batch_size': results_by_batch,
+            'memory_before': memory_before,
+            'memory_after': memory_after
+        }
+        print(f"\nBatch Performance Summary:")
+        for batch_size, results in results_by_batch.items():
+            print(f"  Batch size {batch_size}: {results['throughput']:.2f} ops/sec, "
+                  f"{results['avg_latency_per_record']:.2f} ms/record")
+        # Assertions
+        best_throughput = max(r['throughput'] for r in results_by_batch.values())
+        self.assertGreater(best_throughput, 100)  # At least 100 ops/sec for batch operations
+    
     def test_select_performance(self):
         """Test performance of select operations."""
         print("\nTesting select performance...")
