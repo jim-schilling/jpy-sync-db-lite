@@ -13,6 +13,7 @@ from typing import Dict, List, Optional, Union, Any, Generator
 from contextlib import contextmanager
 import time
 import logging
+import queue
 from sqlalchemy import create_engine, text, Connection
 from sqlalchemy.pool import StaticPool
 
@@ -60,7 +61,7 @@ class DbEngine:
         self.stats = {'requests': 0, 'errors': 0}
         
         # Start worker threads
-        self.num_workers = kwargs.get('num_workers', 2)
+        self.num_workers = kwargs.get('num_workers', 1)
         self.workers = []
         for i in range(self.num_workers):
             worker = threading.Thread(target=self._worker, daemon=True, name=f"DB-Worker-{i}")

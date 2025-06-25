@@ -100,7 +100,7 @@ class TestDbEngine(unittest.TestCase):
         db = DbEngine(self.database_url)
         
         self.assertIsNotNone(db.engine)
-        self.assertEqual(db.num_workers, 2)
+        self.assertEqual(db.num_workers, 1)
         self.assertIsInstance(db.request_queue, queue.Queue)
         self.assertIsInstance(db.stats_lock, type(threading.Lock()))
         self.assertIsInstance(db.shutdown_event, threading.Event)

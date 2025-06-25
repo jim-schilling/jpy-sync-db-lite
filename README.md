@@ -42,7 +42,7 @@ pip install -e ".[dev]"
 from jpy_sync_db_lite import DbEngine
 
 db = DbEngine('sqlite:///my_database.db', 
-              num_workers=2, 
+              num_workers=1, 
               debug=False)
 
 # Create a table
@@ -104,7 +104,7 @@ DbEngine(database_url: str, **kwargs)
 
 **Parameters:**
 - `database_url`: SQLAlchemy database URL (e.g., 'sqlite:///database.db')
-- `num_workers`: Number of worker threads (default: 2)
+- `num_workers`: Number of worker threads (default: 1)
 - `debug`: Enable SQLAlchemy echo mode (default: False)
 
 #### Methods
@@ -283,7 +283,7 @@ python -m unittest tests.test_db_engine_performance -v
 - Tests batch SQL execution with multiple statements
 - Measures performance of mixed DDL/DML operations
 - Tests different batch sizes and statement types
-- **Expected**: >50 ops/sec for batch operations
+- **Expected**: >100 ops/sec for batch operations
 
 #### 5. Concurrent Operations Performance
 - Tests performance under concurrent load (1, 2, 4, 8 threads)
@@ -318,8 +318,10 @@ Based on SQLite with WAL mode and optimized pragmas:
 | Bulk Insert    | >100 ops/sec      | <50ms per record |
 | Simple Select  | >200 ops/sec      | <10ms avg        |
 | Complex Select | >50 ops/sec       | <50ms avg        |
-| Batch Operations| >50 ops/sec       | <100ms avg       |
+| Batch Operations| >100 ops/sec      | <100ms avg       |
 | Transactions   | >50 ops/sec       | <100ms avg       |
+| Concurrent Ops | >50 ops/sec       | <100ms avg       |
+| Single Worker  | >30 ops/sec       | <100ms avg       |
 
 ### Optimization Recommendations
 
