@@ -13,10 +13,12 @@ from typing import Dict, List, Optional, Union, Any, Generator
 from contextlib import contextmanager
 import time
 import logging
+import queue
 from sqlalchemy import create_engine, text, Connection
 from sqlalchemy.pool import StaticPool
 
 from jpy_sync_db_lite.db_request import DbRequest
+from jpy_sync_db_lite.sql_helper import parse_sql_statements, validate_sql_statement
 
 
 class DbOperationError(Exception):
@@ -59,7 +61,7 @@ class DbEngine:
         self.stats = {'requests': 0, 'errors': 0}
         
         # Start worker threads
-        self.num_workers = kwargs.get('num_workers', 2)
+        self.num_workers = kwargs.get('num_workers', 1)
         self.workers = []
         for i in range(self.num_workers):
             worker = threading.Thread(target=self._worker, daemon=True, name=f"DB-Worker-{i}")
@@ -135,7 +137,7 @@ class DbEngine:
         """
         Inner handler for executing a single database request using a provided connection.
         - Does NOT manage connection or locking; expects caller to handle that.
-        - Executes the SQL operation (fetch or execute) and puts results/errors in the response queue.
+        - Executes the SQL operation (fetch, execute, or batch) and puts results/errors in the response queue.
         """
         if request.operation == 'fetch':
             result = conn.execute(text(request.query), request.params or {})
@@ -151,8 +153,84 @@ class DbEngine:
             if request.response_queue:
                 result = len(request.params) if isinstance(request.params, list) else True
                 request.response_queue.put(('success', result))
+        elif request.operation == 'batch':
+            results = self._execute_batch_statements(conn, request.query, request.params['allow_select'])
+            if request.response_queue:
+                request.response_queue.put(('success', results))
         else:
             raise ValueError(f"Unsupported operation type: {request.operation}")
+    
+    def _execute_batch_statements(self, conn: Connection, batch_sql: str, allow_select: bool = True) -> List[Dict[str, Any]]:
+        """
+        Execute a batch of SQL statements and return results for each.
+        
+        Args:
+            conn: Database connection
+            batch_sql: SQL string containing multiple statements
+            allow_select: If False, raises an error when SELECT statements are found
+            
+        Returns:
+            List of results for each statement
+        Raises:
+            ValueError: If allow_select is False and a SELECT statement is found
+        """
+        statements = parse_sql_statements(batch_sql)
+        results = []
+        
+        for i, stmt in enumerate(statements):
+            try:
+                # Validate the statement first
+                is_valid, error_msg = validate_sql_statement(stmt)
+                if not is_valid:
+                    results.append({
+                        'statement_index': i,
+                        'statement': stmt,
+                        'type': 'error',
+                        'error': f"Invalid SQL: {error_msg}"
+                    })
+                    continue
+                
+                # Determine if this is a SELECT statement
+                stmt_upper = stmt.upper().strip()
+                if stmt_upper.startswith('SELECT'):
+                    if not allow_select:
+                        raise ValueError(f"SELECT statements are not allowed in batch mode. Found: {stmt}")
+                    # Execute as fetch operation
+                    result = conn.execute(text(stmt))
+                    rows = result.fetchall()
+                    results.append({
+                        'statement_index': i,
+                        'statement': stmt,
+                        'type': 'fetch',
+                        'result': [dict(row._mapping) for row in rows],
+                        'row_count': len(rows)
+                    })
+                else:
+                    # Execute as non-SELECT operation
+                    result = conn.execute(text(stmt))
+                    results.append({
+                        'statement_index': i,
+                        'statement': stmt,
+                        'type': 'execute',
+                        'result': True,
+                        'row_count': result.rowcount if hasattr(result, 'rowcount') else None
+                    })
+            except Exception as e:
+                # If this is a SELECT error due to allow_select, raise immediately
+                if not allow_select and 'SELECT statements are not allowed' in str(e):
+                    raise
+                results.append({
+                    'statement_index': i,
+                    'statement': stmt,
+                    'type': 'error',
+                    'error': str(e)
+                })
+                # Continue with next statement instead of failing entire batch
+                continue
+        
+        # Commit all changes
+        conn.commit()
+        return results
     
     @contextmanager
     def _db_engine_lock(self):
@@ -228,6 +306,57 @@ class DbEngine:
         """
         response_queue = queue.Queue()
         request = DbRequest('fetch', query, params, response_queue)
+        self.request_queue.put(request)
+        status, result = response_queue.get()
+        if status == 'error':
+            raise DbOperationError(result)
+        return result
+
+    def batch(self, batch_sql: str, allow_select: bool = True) -> List[Dict[str, Any]]:
+        """
+        Execute multiple SQL statements in a batch with thread safety.
+        
+        Args:
+            batch_sql: SQL string containing multiple statements separated by semicolons.
+                      Supports both DDL (CREATE, ALTER, DROP) and DML (INSERT, UPDATE, DELETE) statements.
+                      Comments (-- and /* */) are automatically removed.
+            allow_select: If True, allows SELECT statements in the batch (default: True).
+                         If False, raises an error if SELECT statements are found.
+                         Note: SELECT statements in batches may have different performance characteristics
+                         than dedicated fetch() operations.
+                      
+        Returns:
+            List of dictionaries containing results for each statement:
+                - 'statement_index': Index of the statement in the batch
+                - 'statement': The actual SQL statement executed
+                - 'type': 'fetch', 'execute', or 'error'
+                - 'result': Query results (for SELECT) or True (for other operations)
+                - 'row_count': Number of rows affected/returned
+                - 'error': Error message (only for failed statements)
+                
+        Raises:
+            Exception: If the batch operation fails entirely
+            ValueError: If SELECT statements are found and allow_select=False
+            
+        Example:
+            batch_sql = '''
+                -- Create a table
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY,
+                    name TEXT NOT NULL
+                );
+                
+                -- Insert some data
+                INSERT INTO users (name) VALUES ('John');
+                INSERT INTO users (name) VALUES ('Jane');
+                
+                -- Query the data (only if allow_select=True)
+                SELECT * FROM users;
+            '''
+            results = db.batch(batch_sql)
+        """
+        response_queue = queue.Queue()
+        request = DbRequest('batch', batch_sql, {'allow_select': allow_select}, response_queue)
         self.request_queue.put(request)
         status, result = response_queue.get()
         if status == 'error':
@@ -317,6 +446,51 @@ if __name__ == "__main__":
     update_data = [{"id": i, "last_login": time.time()} for i in range(1, 101)]
     count = db.execute("UPDATE users SET last_login = :last_login WHERE id = :id", update_data)
     print(f"Updated {count} users")
+    
+    # Batch operations using batch
+    batch_sql = """
+        -- Create a new table
+        CREATE TABLE IF NOT EXISTS logs (
+            id INTEGER PRIMARY KEY,
+            message TEXT,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        
+        -- Insert some log entries
+        INSERT INTO logs (message) VALUES ('Application started');
+        INSERT INTO logs (message) VALUES ('User login successful');
+        
+        -- Query the logs
+        SELECT * FROM logs ORDER BY timestamp DESC LIMIT 5;
+        
+        -- Update a log entry
+        UPDATE logs SET message = 'Application started successfully' WHERE message = 'Application started';
+    """
+    batch_results = db.batch(batch_sql)
+    print(f"Batch executed {len(batch_results)} statements")
+    for result in batch_results:
+        print(f"Statement {result['statement_index']}: {result['type']} - {result.get('row_count', 'N/A')} rows")
+    
+    # Batch operations without SELECT statements (DDL/DML only)
+    ddl_dml_batch = """
+        -- Create a new table
+        CREATE TABLE IF NOT EXISTS events (
+            id INTEGER PRIMARY KEY,
+            event_type TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        
+        -- Insert events
+        INSERT INTO events (event_type) VALUES ('user_login');
+        INSERT INTO events (event_type) VALUES ('data_export');
+        INSERT INTO events (event_type) VALUES ('system_backup');
+    """
+    ddl_results = db.batch(ddl_dml_batch, allow_select=False)
+    print(f"DDL/DML batch executed {len(ddl_results)} statements")
+    
+    # Query separately for verification
+    events = db.fetch("SELECT * FROM events ORDER BY created_at DESC LIMIT 3")
+    print(f"Found {len(events)} events")
     
     # Transaction for complex operations
     operations = [

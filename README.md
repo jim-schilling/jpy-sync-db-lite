@@ -11,6 +11,7 @@ A lightweight, thread-safe SQLite database wrapper built on SQLAlchemy with opti
 - **Performance optimized** with SQLite-specific pragmas
 - **Simple API** for common database operations
 - **Consolidated operations** for both single and bulk operations
+- **Batch SQL execution** for multiple statements in a single operation
 - **Transaction support** for complex operations
 - **Statistics tracking** for monitoring performance
 
@@ -41,7 +42,7 @@ pip install -e ".[dev]"
 from jpy_sync_db_lite import DbEngine
 
 db = DbEngine('sqlite:///my_database.db', 
-              num_workers=2, 
+              num_workers=1, 
               debug=False)
 
 # Create a table
@@ -63,6 +64,28 @@ db.execute(
 users = db.fetch("SELECT * FROM users WHERE name = :name", {"name": "John Doe"})
 print(users)  # [{'id': 1, 'name': 'John Doe', 'email': 'john@example.com'}]
 
+# Batch operations - execute multiple SQL statements
+batch_sql = """
+    -- Create a new table
+    CREATE TABLE IF NOT EXISTS logs (
+        id INTEGER PRIMARY KEY,
+        message TEXT,
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    
+    -- Insert multiple log entries
+    INSERT INTO logs (message) VALUES ('Application started');
+    INSERT INTO logs (message) VALUES ('User login successful');
+    
+    -- Query the logs
+    SELECT * FROM logs ORDER BY timestamp DESC LIMIT 5;
+    
+    -- Update a log entry
+    UPDATE logs SET message = 'Application started successfully' WHERE message = 'Application started';
+"""
+batch_results = db.batch(batch_sql)
+print(f"Batch executed {len(batch_results)} statements")
+
 # Cleanup
 db.shutdown()
 ```
@@ -81,7 +104,7 @@ DbEngine(database_url: str, **kwargs)
 
 **Parameters:**
 - `database_url`: SQLAlchemy database URL (e.g., 'sqlite:///database.db')
-- `num_workers`: Number of worker threads (default: 2)
+- `num_workers`: Number of worker threads (default: 1)
 - `debug`: Enable SQLAlchemy echo mode (default: False)
 
 #### Methods
@@ -143,6 +166,53 @@ Gracefully shutdown the database engine and worker threads.
 db.shutdown()
 ```
 
+##### batch(batch_sql, allow_select=True)
+Execute multiple SQL statements in a batch with thread safety.
+
+```python
+batch_sql = """
+    -- Create a table
+    CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL
+    );
+    
+    -- Insert some data
+    INSERT INTO users (name) VALUES ('John');
+    INSERT INTO users (name) VALUES ('Jane');
+    
+    -- Query the data (only if allow_select=True)
+    SELECT * FROM users;
+"""
+results = db.batch(batch_sql)
+
+# Process results
+for result in results:
+    print(f"Statement {result['statement_index']}: {result['type']} - {result.get('row_count', 'N/A')} rows")
+    if result['type'] == 'fetch':
+        print(f"  Data: {result['result']}")
+```
+
+**Parameters:**
+- `batch_sql`: SQL string containing multiple statements separated by semicolons
+- `allow_select`: If True, allows SELECT statements (default: True). If False, raises an error if SELECT statements are found
+
+**Returns:**
+List of dictionaries containing results for each statement:
+- `statement_index`: Index of the statement in the batch
+- `statement`: The actual SQL statement executed
+- `type`: 'fetch', 'execute', or 'error'
+- `result`: Query results (for SELECT) or True (for other operations)
+- `row_count`: Number of rows affected/returned
+- `error`: Error message (only for failed statements)
+
+**Features:**
+- Automatically removes SQL comments (-- and /* */)
+- Handles semicolons within string literals
+- Supports DDL (CREATE, ALTER, DROP) and DML (INSERT, UPDATE, DELETE) statements
+- Continues execution even if individual statements fail
+- Maintains transaction consistency across all statements
+
 ## Performance Optimizations
 
 The library includes several SQLite-specific optimizations:
@@ -174,7 +244,7 @@ Run the standalone benchmark script for a quick performance overview:
 python tests/benchmark_db_engine.py
 
 # Run specific tests
-python tests/benchmark_db_engine.py --tests single bulk select scaling
+python tests/benchmark_db_engine.py --tests single bulk select scaling batch
 
 # Customize parameters
 python tests/benchmark_db_engine.py --operations 2000 --workers 2 --batch-sizes 100 500 1000
@@ -209,16 +279,22 @@ python -m unittest tests.test_db_engine_performance -v
   - Complex SELECT with multiple conditions and ORDER BY
 - **Expected**: >200 ops/sec for simple selects
 
-#### 4. Concurrent Operations Performance
+#### 4. Batch Performance
+- Tests batch SQL execution with multiple statements
+- Measures performance of mixed DDL/DML operations
+- Tests different batch sizes and statement types
+- **Expected**: >100 ops/sec for batch operations
+
+#### 5. Concurrent Operations Performance
 - Tests performance under concurrent load (1, 2, 4, 8 threads)
 - Mix of read and write operations
 - **Expected**: >50 ops/sec under load
 
-#### 5. Transaction Performance
+#### 6. Transaction Performance
 - Tests transaction operations with different sizes
 - **Expected**: >50 ops/sec for transactions
 
-#### 6. Worker Thread Scaling
+#### 7. Worker Thread Scaling
 - Tests performance with different worker thread configurations
 - Helps determine optimal worker count
 - **Expected**: >30 ops/sec with single worker
@@ -242,7 +318,10 @@ Based on SQLite with WAL mode and optimized pragmas:
 | Bulk Insert    | >100 ops/sec      | <50ms per record |
 | Simple Select  | >200 ops/sec      | <10ms avg        |
 | Complex Select | >50 ops/sec       | <50ms avg        |
+| Batch Operations| >100 ops/sec      | <100ms avg       |
 | Transactions   | >50 ops/sec       | <100ms avg       |
+| Concurrent Ops | >50 ops/sec       | <100ms avg       |
+| Single Worker  | >30 ops/sec       | <100ms avg       |
 
 ### Optimization Recommendations
 
@@ -300,7 +379,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - Enhanced error handling and logging
 - Additional performance testing scenarios
 
-### 0.1.3 (2025-01-23)
+### 0.1.3 (2025-06-23)
 - Thread-safe SQLite operations with worker thread pool
 - SQLAlchemy 2.0+ compatibility with modern async patterns
 - Performance optimizations with SQLite-specific pragmas
@@ -311,3 +390,14 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - Memory usage monitoring (requires `psutil`)
 - Thread safety through proper connection management
 - WAL mode and optimized cache settings for better concurrency
+
+### 0.2.0 (2025-06-25)
+- **New batch SQL execution feature** for executing multiple SQL statements in a single operation
+- **SQL statement parsing and validation** with automatic comment removal
+- **Enhanced error handling** for batch operations with individual statement error reporting
+- **Thread-safe batch processing** with proper connection management
+- **Support for mixed DDL/DML operations** in batch mode
+- **Automatic semicolon handling** within string literals and BEGIN...END blocks
+- **Batch performance testing** and benchmarking tools
+- **Improved SQL validation** with comprehensive statement type checking
+- **Enhanced documentation** with batch operation examples and API reference
