@@ -264,7 +264,7 @@ class TestSqlHelper(unittest.TestCase):
         self.assertTrue(any(stmt.startswith('EXPLAIN') for stmt in statements))
 
     def test_split_sql_file_with_semicolons(self):
-        """Test split_sql_file with preserve_trailing_semicolon parameter."""
+        """Test split_sql_file with strip_semicolon parameter."""
         sql_content = """
         CREATE TABLE users (id INTEGER PRIMARY KEY);
         INSERT INTO users VALUES (1, 'John');
