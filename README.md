@@ -410,6 +410,13 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **Enhanced SQL comment removal** with proper handling of comments within string literals
 - **Improved SQL statement parsing** with better handling of complex SQL constructs including BEGIN...END blocks
 - **Added sqlparse dependency** for robust SQL parsing and formatting
-- **Enhanced SQL validation** with more accurate statement type detection
 - **Improved error handling** for malformed SQL statements
 - **Better support for complex SQL constructs** including triggers, stored procedures, and multi-line statements
+
+### 0.2.2 (2025-06-26)
+- **Code refactoring and architectural improvements** for better maintainability and performance
+- **Enhanced error handling and logging** with more detailed exception information
+- **Optimized database performance** with refined SQLite pragma configurations
+- **Enhanced SQL parsing robustness** with better handling of edge cases and malformed SQL
+- **Code documentation improvements** with more detailed docstrings and usage examples
+

@@ -47,25 +47,36 @@ def parse_sql_statements(sql_text: str, strip_semicolon: bool = False) -> List[s
     """
     if not sql_text:
         return []
+    
     # Remove comments first
     clean_sql = remove_sql_comments(sql_text)
+    
     # Use sqlparse to split statements
-    stmts = [str(stmt).strip() for stmt in sqlparse.parse(clean_sql)]
-    # Filter out empty statements and statements that are only comments or whitespace
+    parsed_statements = sqlparse.parse(clean_sql)
     filtered_stmts = []
-    for stmt in stmts:
+    
+    for stmt in parsed_statements:
+        stmt_str = str(stmt).strip()
+        if not stmt_str:
+            continue
+            
         # Tokenize and check if all tokens are comments or whitespace
-        tokens = list(sqlparse.parse(stmt)[0].flatten()) if stmt else []
+        tokens = list(stmt.flatten())
         if not tokens:
             continue
         if all(t.is_whitespace or t.ttype in Comment for t in tokens):
             continue
+            
         # Filter out statements that are just semicolons
-        if stmt.strip() == ';':
+        if stmt_str == ';':
             continue
-        filtered_stmts.append(stmt)
-    if strip_semicolon:
-        filtered_stmts = [stmt.rstrip(';').strip() for stmt in filtered_stmts]
+            
+        # Apply semicolon stripping based on parameter
+        if strip_semicolon:
+            stmt_str = stmt_str.rstrip(';').strip()
+            
+        filtered_stmts.append(stmt_str)
+    
     return filtered_stmts
 
 
@@ -82,16 +93,23 @@ def split_sql_file(file_path: str, strip_semicolon: bool = False) -> List[str]:
     
     Raises:
         FileNotFoundError: If the file doesn't exist
-        IOError: If there's an error reading the file
+        OSError: If there's an error reading the file
+        ValueError: If file_path is empty or invalid
     """
+    if not file_path:
+        raise ValueError("file_path cannot be empty")
+    
+    if not isinstance(file_path, str):
+        raise ValueError("file_path must be a string")
+    
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
             sql_content = f.read()
         return parse_sql_statements(sql_content, strip_semicolon)
     except FileNotFoundError:
         raise FileNotFoundError(f"SQL file not found: {file_path}")
-    except IOError as e:
-        raise IOError(f"Error reading SQL file {file_path}: {e}")
+    except OSError as e:
+        raise OSError(f"Error reading SQL file {file_path}: {e}") from e
 
 
 # Usage examples
@@ -110,7 +128,7 @@ if __name__ == "__main__":
     print(clean_sql)
     print()
     
-    # Example 2: Parse multiple statements (default behavior - strip semicolons)
+    # Example 2: Parse multiple statements (preserve semicolons by default)
     multi_sql = """
     CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT);
     INSERT INTO users VALUES (1, 'John');
@@ -119,14 +137,14 @@ if __name__ == "__main__":
     """
     
     statements = parse_sql_statements(multi_sql)
-    print("Individual statements (semicolons stripped):")
+    print("Individual statements (semicolons preserved):")
     for i, stmt in enumerate(statements, 1):
         print(f"{i}. {stmt}")
     print()
     
-    # Example 3: Parse multiple statements (preserve semicolons)
-    statements_with_semicolons = parse_sql_statements(multi_sql, strip_semicolon=True)
-    print("Individual statements (semicolons preserved):")
-    for i, stmt in enumerate(statements_with_semicolons, 1):
+    # Example 3: Parse multiple statements (strip semicolons)
+    statements_without_semicolons = parse_sql_statements(multi_sql, strip_semicolon=True)
+    print("Individual statements (semicolons stripped):")
+    for i, stmt in enumerate(statements_without_semicolons, 1):
         print(f"{i}. {stmt}")
     print() 
