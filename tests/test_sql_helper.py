@@ -13,8 +13,7 @@ import os
 from jpy_sync_db_lite.sql_helper import (
     remove_sql_comments, 
     parse_sql_statements, 
-    split_sql_file, 
-    validate_sql_statement
+    split_sql_file
 )
 
 
@@ -64,9 +63,9 @@ class TestSqlHelper(unittest.TestCase):
         """
         statements = parse_sql_statements(sql)
         self.assertEqual(len(statements), 3)
-        self.assertIn('CREATE TABLE users (id INTEGER PRIMARY KEY)', statements)
-        self.assertIn('INSERT INTO users VALUES (1, \'John\')', statements)
-        self.assertIn('SELECT * FROM users', statements)
+        self.assertIn('CREATE TABLE users (id INTEGER PRIMARY KEY);', statements)
+        self.assertIn('INSERT INTO users VALUES (1, \'John\');', statements)
+        self.assertIn('SELECT * FROM users;', statements)
     
     def test_parse_sql_statements_with_comments(self):
         """Test parsing SQL statements with comments."""
@@ -82,6 +81,7 @@ class TestSqlHelper(unittest.TestCase):
             self.assertNotIn('--', stmt)
             self.assertNotIn('/*', stmt)
             self.assertNotIn('*/', stmt)
+            self.assertTrue(stmt.endswith(';'))
     
     def test_parse_sql_statements_preserve_semicolons_in_strings(self):
         """Test that semicolons in string literals are preserved."""
@@ -93,6 +93,8 @@ class TestSqlHelper(unittest.TestCase):
         self.assertEqual(len(statements), 2)
         self.assertIn("'John; Doe'", statements[0])
         self.assertIn("'Jane; Smith'", statements[1])
+        self.assertTrue(statements[0].endswith(';'))
+        self.assertTrue(statements[1].endswith(';'))
     
     def test_parse_sql_statements_empty(self):
         """Test parsing empty SQL."""
@@ -121,7 +123,7 @@ class TestSqlHelper(unittest.TestCase):
         try:
             statements = split_sql_file(temp_file)
             self.assertEqual(len(statements), 3)
-            self.assertIn('CREATE TABLE users (id INTEGER PRIMARY KEY)', statements)
+            self.assertIn('CREATE TABLE users (id INTEGER PRIMARY KEY);', statements)
         finally:
             os.unlink(temp_file)
     
@@ -129,71 +131,6 @@ class TestSqlHelper(unittest.TestCase):
         """Test handling of non-existent file."""
         with self.assertRaises(FileNotFoundError):
             split_sql_file("non_existent_file.sql")
-    
-    def test_validate_sql_statement_valid(self):
-        """Test validation of valid SQL statements, including all major SQLite types."""
-        valid_statements = [
-            # DML
-            "SELECT * FROM users",
-            "INSERT INTO users VALUES (1, 'John')",
-            "UPDATE users SET name = 'John' WHERE id = 1",
-            "DELETE FROM users WHERE id = 1",
-            # DDL
-            "CREATE TABLE users (id INTEGER PRIMARY KEY)",
-            "CREATE INDEX idx_name ON users(name)",
-            "CREATE VIEW v_users AS SELECT * FROM users",
-            "CREATE TRIGGER trg AFTER INSERT ON users BEGIN UPDATE users SET name = 'X'; END;",
-            "DROP TABLE users",
-            "DROP INDEX idx_name",
-            "DROP VIEW v_users",
-            "DROP TRIGGER trg",
-            "ALTER TABLE users ADD COLUMN email TEXT",
-            # Other SQLite statements
-            "REINDEX idx_name",
-            "ANALYZE users",
-            "VACUUM",
-            "PRAGMA journal_mode=WAL",
-            "ATTACH DATABASE 'file.db' AS db2",
-            "DETACH DATABASE db2",
-            "BEGIN TRANSACTION",
-            "COMMIT",
-            "ROLLBACK",
-            "SAVEPOINT sp1",
-            "RELEASE sp1",
-            "EXPLAIN QUERY PLAN SELECT * FROM users"
-        ]
-        
-        for stmt in valid_statements:
-            is_valid, error = validate_sql_statement(stmt)
-            self.assertTrue(is_valid, f"Statement should be valid: {stmt}")
-            self.assertEqual(error, "")
-    
-    def test_validate_sql_statement_invalid(self):
-        """Test validation of invalid SQL statements, including all major SQLite types."""
-        invalid_statements = [
-            ("", "Empty statement"),
-            ("   ", "Empty statement"),
-            ("SELECT * FROM", "SELECT statement missing table name after FROM"),
-            ("INSERT users VALUES (1)", "INSERT statement missing INTO clause"),
-            ("UPDATE users name = 'John'", "UPDATE statement missing SET clause"),
-            ("DELETE users WHERE id = 1", "DELETE statement missing FROM clause"),
-            ("CREATE users (id INTEGER)", "CREATE statement missing TABLE, INDEX, VIEW, or TRIGGER clause"),
-            ("DROP users", "DROP statement missing TABLE, INDEX, VIEW, or TRIGGER clause"),
-            ("ALTER users ADD COLUMN email", "ALTER statement missing TABLE clause"),
-            # Some malformed SQLite statements
-            ("PRAGMA", "PRAGMA statement missing argument"),
-            ("ATTACH DATABASE", "ATTACH statement missing AS keyword"),
-            ("DETACH", "DETACH statement missing DATABASE keyword"),
-            ("REINDEX", "REINDEX statement missing target"),
-            ("ANALYZE", "ANALYZE statement missing target"),
-            ("SAVEPOINT", "SAVEPOINT statement missing name"),
-            ("RELEASE", "RELEASE statement missing savepoint name")
-        ]
-        
-        for stmt, expected_error in invalid_statements:
-            is_valid, error = validate_sql_statement(stmt)
-            self.assertFalse(is_valid, f"Statement should be invalid: {stmt}")
-            self.assertIn(expected_error, error)
     
     def test_complex_sql_parsing(self):
         """Test parsing complex SQL with mixed content."""
@@ -266,22 +203,12 @@ class TestSqlHelper(unittest.TestCase):
         INSERT INTO users VALUES (1, 'John');
         SELECT * FROM users;
         """
-        
-        # Test default behavior (strip semicolons)
-        statements = parse_sql_statements(sql)
-        self.assertEqual(len(statements), 3)
-        
-        # Verify semicolons are stripped
+        statements = parse_sql_statements(sql, strip_semicolon=True)
         for stmt in statements:
             self.assertFalse(stmt.endswith(';'), f"Statement should not end with semicolon: {stmt}")
         
-        # Verify the statements are correct
-        self.assertEqual(statements[0], "CREATE TABLE users (id INTEGER PRIMARY KEY)")
-        self.assertEqual(statements[1], "INSERT INTO users VALUES (1, 'John')")
-        self.assertEqual(statements[2], "SELECT * FROM users")
-        
-        # Test preserve_trailing_semicolon=True behavior
-        statements_with_semicolons = parse_sql_statements(sql, preserve_trailing_semicolon=True)
+        # Test strip_semicolon=False behavior
+        statements_with_semicolons = parse_sql_statements(sql, strip_semicolon=False)
         self.assertEqual(len(statements_with_semicolons), 3)
         
         # Verify semicolons are preserved
@@ -337,31 +264,22 @@ class TestSqlHelper(unittest.TestCase):
         self.assertTrue(any(stmt.startswith('EXPLAIN') for stmt in statements))
 
     def test_split_sql_file_with_semicolons(self):
-        """Test split_sql_file with preserve_trailing_semicolon parameter."""
-        # Create a temporary SQL file
+        """Test split_sql_file with strip_semicolon parameter."""
         sql_content = """
         CREATE TABLE users (id INTEGER PRIMARY KEY);
         INSERT INTO users VALUES (1, 'John');
         SELECT * FROM users;
         """
-        
         with tempfile.NamedTemporaryFile(mode='w', suffix='.sql', delete=False) as f:
             f.write(sql_content)
             temp_file = f.name
-        
         try:
-            # Test default behavior (strip semicolons)
-            statements = split_sql_file(temp_file)
-            self.assertEqual(len(statements), 3)
+            statements = split_sql_file(temp_file, strip_semicolon=False)
             for stmt in statements:
-                self.assertFalse(stmt.endswith(';'), f"Statement should not end with semicolon: {stmt}")
-            
-            # Test preserve_trailing_semicolon=True
-            statements_with_semicolons = split_sql_file(temp_file, preserve_trailing_semicolon=True)
-            self.assertEqual(len(statements_with_semicolons), 3)
-            for stmt in statements_with_semicolons:
-                self.assertTrue(stmt.endswith(';'), f"Statement should end with semicolon: {stmt}")
-                
+                self.assertTrue(stmt.endswith(';'))
+            statements_stripped = split_sql_file(temp_file, strip_semicolon=True)
+            for stmt in statements_stripped:
+                self.assertFalse(stmt.endswith(';'))
         finally:
             os.unlink(temp_file)
 

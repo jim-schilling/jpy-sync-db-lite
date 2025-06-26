@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "jpy-sync-db-lite"
-version = "0.2.0"
+version = "0.2.1"
 description = "Jim's Python - Synchronous Database Wrapper for SQLite"
 readme = "README.md"
 license = "MIT"
@@ -29,6 +29,7 @@ classifiers = [
 requires-python = ">=3.10"
 dependencies = [
     "sqlalchemy>=2.0.37",
+    "sqlparse>=0.4.0",
 ]
 
 [project.optional-dependencies]

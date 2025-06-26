@@ -14,6 +14,7 @@ A lightweight, thread-safe SQLite database wrapper built on SQLAlchemy with opti
 - **Batch SQL execution** for multiple statements in a single operation
 - **Transaction support** for complex operations
 - **Statistics tracking** for monitoring performance
+- **Robust SQL parsing** using sqlparse library for reliable statement parsing
 
 ## Installation
 
@@ -207,11 +208,13 @@ List of dictionaries containing results for each statement:
 - `error`: Error message (only for failed statements)
 
 **Features:**
-- Automatically removes SQL comments (-- and /* */)
-- Handles semicolons within string literals
+- **Robust SQL parsing** using sqlparse library for reliable statement parsing
+- Automatically removes SQL comments (-- and /* */) while preserving comments within string literals
+- Handles semicolons within string literals and complex SQL constructs
 - Supports DDL (CREATE, ALTER, DROP) and DML (INSERT, UPDATE, DELETE) statements
 - Continues execution even if individual statements fail
 - Maintains transaction consistency across all statements
+- Enhanced support for complex SQL constructs including triggers and BEGIN...END blocks
 
 ## Performance Optimizations
 
@@ -401,3 +404,12 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **Batch performance testing** and benchmarking tools
 - **Improved SQL validation** with comprehensive statement type checking
 - **Enhanced documentation** with batch operation examples and API reference
+
+### 0.2.1 (2025-06-26)
+- **Refactored SQL parsing to use sqlparse library** for improved reliability and standards compliance
+- **Enhanced SQL comment removal** with proper handling of comments within string literals
+- **Improved SQL statement parsing** with better handling of complex SQL constructs including BEGIN...END blocks
+- **Added sqlparse dependency** for robust SQL parsing and formatting
+- **Enhanced SQL validation** with more accurate statement type detection
+- **Improved error handling** for malformed SQL statements
+- **Better support for complex SQL constructs** including triggers, stored procedures, and multi-line statements

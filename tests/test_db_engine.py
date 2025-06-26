@@ -682,7 +682,7 @@ class TestDbEngine(unittest.TestCase):
         # Verify results (empty statements should be filtered out)
         self.assertEqual(len(results), 3)
         
-        # Check statements
+        # Check statements - empty statements are now filtered out
         self.assertEqual(results[0]['type'], 'execute')  # CREATE
         self.assertEqual(results[1]['type'], 'execute')  # INSERT
         self.assertEqual(results[2]['type'], 'fetch')    # SELECT
