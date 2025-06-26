@@ -18,7 +18,7 @@ from sqlalchemy import create_engine, text, Connection
 from sqlalchemy.pool import StaticPool
 
 from jpy_sync_db_lite.db_request import DbRequest
-from jpy_sync_db_lite.sql_helper import parse_sql_statements, validate_sql_statement
+from jpy_sync_db_lite.sql_helper import parse_sql_statements
 
 
 class DbOperationError(Exception):
@@ -179,17 +179,6 @@ class DbEngine:
         
         for i, stmt in enumerate(statements):
             try:
-                # Validate the statement first
-                is_valid, error_msg = validate_sql_statement(stmt)
-                if not is_valid:
-                    results.append({
-                        'statement_index': i,
-                        'statement': stmt,
-                        'type': 'error',
-                        'error': f"Invalid SQL: {error_msg}"
-                    })
-                    continue
-                
                 # Determine if this is a SELECT statement
                 stmt_upper = stmt.upper().strip()
                 if stmt_upper.startswith('SELECT'):
