@@ -420,3 +420,12 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **Enhanced SQL parsing robustness** with better handling of edge cases and malformed SQL
 - **Code documentation improvements** with more detailed docstrings and usage examples
 
+### 0.2.3 (2025-06-27)
+- **Enhanced thread safety and concurrency** with improved locking mechanisms and connection management
+- **Optimized database engine performance** with refined worker thread handling and request processing
+- **Improved SQL statement parsing** with better support for complex SQL constructs and edge cases
+- **Enhanced error handling and recovery** with more robust exception management and detailed error reporting
+- **Code quality improvements** with comprehensive test coverage and performance benchmarking
+- **Memory usage optimizations** with better resource management and cleanup procedures
+- **Documentation enhancements** with improved API documentation and usage examples
+

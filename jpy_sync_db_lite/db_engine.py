@@ -18,7 +18,7 @@ from sqlalchemy import create_engine, text, Connection
 from sqlalchemy.pool import StaticPool
 
 from jpy_sync_db_lite.db_request import DbRequest
-from jpy_sync_db_lite.sql_helper import parse_sql_statements
+from jpy_sync_db_lite.sql_helper import parse_sql_statements, detect_statement_type
 
 
 class DbOperationError(Exception):
@@ -179,9 +179,10 @@ class DbEngine:
         
         for i, stmt in enumerate(statements):
             try:
-                # Determine if this is a SELECT statement
-                stmt_upper = stmt.upper().strip()
-                if stmt_upper.startswith('SELECT'):
+                # Use detect_statement_type to determine operation type
+                operation_type = detect_statement_type(stmt)
+                
+                if operation_type == 'fetch':
                     if not allow_select:
                         raise ValueError(f"SELECT statements are not allowed in batch mode. Found: {stmt}")
                     # Execute as fetch operation

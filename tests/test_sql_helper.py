@@ -13,7 +13,8 @@ import os
 from jpy_sync_db_lite.sql_helper import (
     remove_sql_comments, 
     parse_sql_statements, 
-    split_sql_file
+    split_sql_file,
+    detect_statement_type
 )
 
 
@@ -282,6 +283,251 @@ class TestSqlHelper(unittest.TestCase):
                 self.assertFalse(stmt.endswith(';'))
         finally:
             os.unlink(temp_file)
+
+
+class TestDetectStatementType(unittest.TestCase):
+    """Test cases for detect_statement_type function."""
+    
+    def test_detect_statement_type_select(self):
+        """Test SELECT statement detection."""
+        sql = "SELECT * FROM users"
+        self.assertEqual(detect_statement_type(sql), 'fetch')
+        
+        sql = "SELECT id, name FROM users WHERE id = 1"
+        self.assertEqual(detect_statement_type(sql), 'fetch')
+        
+        sql = "SELECT COUNT(*) FROM users"
+        self.assertEqual(detect_statement_type(sql), 'fetch')
+    
+    def test_detect_statement_type_cte_with_select(self):
+        """Test CTE (WITH ... SELECT) statement detection."""
+        sql = """
+        WITH user_counts AS (
+            SELECT department, COUNT(*) as count
+            FROM users
+            GROUP BY department
+        )
+        SELECT * FROM user_counts
+        """
+        self.assertEqual(detect_statement_type(sql), 'fetch')
+        
+        sql = """
+        WITH recursive_cte AS (
+            SELECT 1 as n
+            UNION ALL
+            SELECT n + 1 FROM recursive_cte WHERE n < 10
+        )
+        SELECT * FROM recursive_cte
+        """
+        self.assertEqual(detect_statement_type(sql), 'fetch')
+        
+        sql = """
+        WITH cte1 AS (SELECT 1 as a),
+             cte2 AS (SELECT 2 as b)
+        SELECT a, b FROM cte1, cte2
+        """
+        self.assertEqual(detect_statement_type(sql), 'fetch')
+    
+    def test_detect_statement_type_cte_with_insert(self):
+        """Test CTE with INSERT statement detection."""
+        sql = """
+        WITH user_data AS (
+            SELECT 'John' as name, 'john@example.com' as email
+        )
+        INSERT INTO users (name, email) SELECT name, email FROM user_data
+        """
+        self.assertEqual(detect_statement_type(sql), 'execute')
+        
+        sql = """
+        WITH temp_data AS (
+            SELECT id, name FROM source_table WHERE active = 1
+        )
+        INSERT INTO target_table SELECT * FROM temp_data
+        """
+        self.assertEqual(detect_statement_type(sql), 'execute')
+    
+    def test_detect_statement_type_cte_with_update(self):
+        """Test CTE with UPDATE statement detection."""
+        sql = """
+        WITH user_updates AS (
+            SELECT id, 'Updated' as new_name FROM users WHERE id = 1
+        )
+        UPDATE users SET name = new_name FROM user_updates WHERE users.id = user_updates.id
+        """
+        self.assertEqual(detect_statement_type(sql), 'execute')
+    
+    def test_detect_statement_type_cte_with_delete(self):
+        """Test CTE with DELETE statement detection."""
+        sql = """
+        WITH users_to_delete AS (
+            SELECT id FROM users WHERE last_login < '2020-01-01'
+        )
+        DELETE FROM users WHERE id IN (SELECT id FROM users_to_delete)
+        """
+        self.assertEqual(detect_statement_type(sql), 'execute')
+    
+    def test_detect_statement_type_values(self):
+        """Test VALUES statement detection."""
+        sql = "VALUES (1, 'John'), (2, 'Jane')"
+        self.assertEqual(detect_statement_type(sql), 'fetch')
+        
+        sql = "VALUES (1, 'John')"
+        self.assertEqual(detect_statement_type(sql), 'fetch')
+    
+    def test_detect_statement_type_show(self):
+        """Test SHOW statement detection."""
+        sql = "SHOW TABLES"
+        self.assertEqual(detect_statement_type(sql), 'fetch')
+        
+        sql = "SHOW DATABASES"
+        self.assertEqual(detect_statement_type(sql), 'fetch')
+        
+        sql = "SHOW CREATE TABLE users"
+        self.assertEqual(detect_statement_type(sql), 'fetch')
+    
+    def test_detect_statement_type_explain(self):
+        """Test EXPLAIN statement detection."""
+        sql = "EXPLAIN SELECT * FROM users"
+        self.assertEqual(detect_statement_type(sql), 'fetch')
+        
+        sql = "EXPLAIN QUERY PLAN SELECT * FROM users"
+        self.assertEqual(detect_statement_type(sql), 'fetch')
+    
+    def test_detect_statement_type_pragma(self):
+        """Test PRAGMA statement detection."""
+        sql = "PRAGMA table_info(users)"
+        self.assertEqual(detect_statement_type(sql), 'fetch')
+        
+        sql = "PRAGMA foreign_key_list(users)"
+        self.assertEqual(detect_statement_type(sql), 'fetch')
+        
+        sql = "PRAGMA journal_mode=WAL"
+        self.assertEqual(detect_statement_type(sql), 'fetch')
+    
+    def test_detect_statement_type_describe(self):
+        """Test DESCRIBE/DESC statement detection."""
+        sql = "DESCRIBE users"
+        self.assertEqual(detect_statement_type(sql), 'fetch')
+        
+        sql = "DESC users"
+        self.assertEqual(detect_statement_type(sql), 'fetch')
+    
+    def test_detect_statement_type_insert(self):
+        """Test INSERT statement detection."""
+        sql = "INSERT INTO users (name) VALUES ('John')"
+        self.assertEqual(detect_statement_type(sql), 'execute')
+        
+        sql = "INSERT INTO users SELECT * FROM temp_users"
+        self.assertEqual(detect_statement_type(sql), 'execute')
+    
+    def test_detect_statement_type_update(self):
+        """Test UPDATE statement detection."""
+        sql = "UPDATE users SET name = 'John' WHERE id = 1"
+        self.assertEqual(detect_statement_type(sql), 'execute')
+    
+    def test_detect_statement_type_delete(self):
+        """Test DELETE statement detection."""
+        sql = "DELETE FROM users WHERE id = 1"
+        self.assertEqual(detect_statement_type(sql), 'execute')
+    
+    def test_detect_statement_type_create(self):
+        """Test CREATE statement detection."""
+        sql = "CREATE TABLE users (id INTEGER PRIMARY KEY)"
+        self.assertEqual(detect_statement_type(sql), 'execute')
+        
+        sql = "CREATE INDEX idx_name ON users(name)"
+        self.assertEqual(detect_statement_type(sql), 'execute')
+        
+        sql = "CREATE VIEW v_users AS SELECT * FROM users"
+        self.assertEqual(detect_statement_type(sql), 'execute')
+    
+    def test_detect_statement_type_alter(self):
+        """Test ALTER statement detection."""
+        sql = "ALTER TABLE users ADD COLUMN email TEXT"
+        self.assertEqual(detect_statement_type(sql), 'execute')
+        
+        sql = "ALTER TABLE users DROP COLUMN email"
+        self.assertEqual(detect_statement_type(sql), 'execute')
+    
+    def test_detect_statement_type_drop(self):
+        """Test DROP statement detection."""
+        sql = "DROP TABLE users"
+        self.assertEqual(detect_statement_type(sql), 'execute')
+        
+        sql = "DROP INDEX idx_name"
+        self.assertEqual(detect_statement_type(sql), 'execute')
+    
+    def test_detect_statement_type_transaction(self):
+        """Test transaction statement detection."""
+        sql = "BEGIN TRANSACTION"
+        self.assertEqual(detect_statement_type(sql), 'execute')
+        
+        sql = "COMMIT"
+        self.assertEqual(detect_statement_type(sql), 'execute')
+        
+        sql = "ROLLBACK"
+        self.assertEqual(detect_statement_type(sql), 'execute')
+    
+    def test_detect_statement_type_empty_and_whitespace(self):
+        """Test empty and whitespace-only statements."""
+        self.assertEqual(detect_statement_type(""), 'execute')
+        self.assertEqual(detect_statement_type("   "), 'execute')
+        self.assertEqual(detect_statement_type("\n\t"), 'execute')
+    
+    def test_detect_statement_type_with_comments(self):
+        """Test statements with comments."""
+        sql = "-- This is a comment\nSELECT * FROM users"
+        self.assertEqual(detect_statement_type(sql), 'fetch')
+        
+        sql = "/* Comment */ SELECT * FROM users"
+        self.assertEqual(detect_statement_type(sql), 'fetch')
+        
+        sql = "WITH cte AS (SELECT 1) -- Comment\nSELECT * FROM cte"
+        self.assertEqual(detect_statement_type(sql), 'fetch')
+    
+    def test_detect_statement_type_case_insensitive(self):
+        """Test that statement detection is case insensitive."""
+        sql = "select * from users"
+        self.assertEqual(detect_statement_type(sql), 'fetch')
+        
+        sql = "Select * From users"
+        self.assertEqual(detect_statement_type(sql), 'fetch')
+        
+        sql = "with cte as (select 1) select * from cte"
+        self.assertEqual(detect_statement_type(sql), 'fetch')
+        
+        sql = "insert into users values (1, 'John')"
+        self.assertEqual(detect_statement_type(sql), 'execute')
+    
+    def test_detect_statement_type_complex_nested(self):
+        """Test complex nested statements."""
+        sql = """
+        WITH user_stats AS (
+            SELECT 
+                department,
+                COUNT(*) as user_count,
+                AVG(salary) as avg_salary
+            FROM users 
+            WHERE active = 1
+            GROUP BY department
+        ),
+        dept_rankings AS (
+            SELECT 
+                department,
+                user_count,
+                avg_salary,
+                RANK() OVER (ORDER BY avg_salary DESC) as salary_rank
+            FROM user_stats
+        )
+        SELECT 
+            department,
+            user_count,
+            avg_salary,
+            salary_rank
+        FROM dept_rankings
+        WHERE salary_rank <= 5
+        """
+        self.assertEqual(detect_statement_type(sql), 'fetch')
 
 
 if __name__ == '__main__':
