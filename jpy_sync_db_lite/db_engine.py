@@ -20,6 +20,11 @@ from sqlalchemy.pool import StaticPool
 from jpy_sync_db_lite.db_request import DbRequest
 from jpy_sync_db_lite.sql_helper import parse_sql_statements, detect_statement_type
 
+_FETCH_STATEMENT = 'fetch'
+_EXECUTE_STATEMENT = 'execute'
+_BATCH_STATEMENT = 'batch'
+_ERROR_STATEMENT = 'error'
+
 
 class DbOperationError(Exception):
     """
@@ -139,12 +144,12 @@ class DbEngine:
         - Does NOT manage connection or locking; expects caller to handle that.
         - Executes the SQL operation (fetch, execute, or batch) and puts results/errors in the response queue.
         """
-        if request.operation == 'fetch':
+        if request.operation == _FETCH_STATEMENT:
             result = conn.execute(text(request.query), request.params or {})
             rows = result.fetchall()
             if request.response_queue:
                 request.response_queue.put(('success', [dict(row._mapping) for row in rows]))
-        elif request.operation == 'execute':
+        elif request.operation == _EXECUTE_STATEMENT:
             if isinstance(request.params, list):
                 conn.execute(text(request.query), request.params)
             else:
@@ -153,7 +158,7 @@ class DbEngine:
             if request.response_queue:
                 result = len(request.params) if isinstance(request.params, list) else True
                 request.response_queue.put(('success', result))
-        elif request.operation == 'batch':
+        elif request.operation == _BATCH_STATEMENT:
             results = self._execute_batch_statements(conn, request.query, request.params['allow_select'])
             if request.response_queue:
                 request.response_queue.put(('success', results))
@@ -191,7 +196,7 @@ class DbEngine:
                     results.append({
                         'statement_index': i,
                         'statement': stmt,
-                        'type': 'fetch',
+                        'type': _FETCH_STATEMENT,
                         'result': [dict(row._mapping) for row in rows],
                         'row_count': len(rows)
                     })
@@ -201,7 +206,7 @@ class DbEngine:
                     results.append({
                         'statement_index': i,
                         'statement': stmt,
-                        'type': 'execute',
+                        'type': _EXECUTE_STATEMENT,
                         'result': True,
                         'row_count': result.rowcount if hasattr(result, 'rowcount') else None
                     })
@@ -212,7 +217,7 @@ class DbEngine:
                 results.append({
                     'statement_index': i,
                     'statement': stmt,
-                    'type': 'error',
+                    'type': _ERROR_STATEMENT,
                     'error': str(e)
                 })
                 # Continue with next statement instead of failing entire batch
@@ -276,7 +281,7 @@ class DbEngine:
             Exception: If query execution fails
         """
         response_queue = queue.Queue()
-        request = DbRequest('execute', query, params, response_queue)
+        request = DbRequest(_EXECUTE_STATEMENT, query, params, response_queue)
         self.request_queue.put(request)
         status, result = response_queue.get()
         if status == 'error':
@@ -295,7 +300,7 @@ class DbEngine:
             Exception: If query execution fails
         """
         response_queue = queue.Queue()
-        request = DbRequest('fetch', query, params, response_queue)
+        request = DbRequest(_FETCH_STATEMENT, query, params, response_queue)
         self.request_queue.put(request)
         status, result = response_queue.get()
         if status == 'error':
@@ -346,7 +351,7 @@ class DbEngine:
             results = db.batch(batch_sql)
         """
         response_queue = queue.Queue()
-        request = DbRequest('batch', batch_sql, {'allow_select': allow_select}, response_queue)
+        request = DbRequest(_BATCH_STATEMENT, batch_sql, {'allow_select': allow_select}, response_queue)
         self.request_queue.put(request)
         status, result = response_queue.get()
         if status == 'error':
@@ -374,10 +379,10 @@ class DbEngine:
                     for op in operations:
                         if 'operation' not in op:
                             raise ValueError("Operation type is required")
-                        if op['operation'] == 'fetch':
+                        if op['operation'] == _FETCH_STATEMENT:
                             result = conn.execute(text(op['query']), op.get('params', {}))
                             results.append([dict(row._mapping) for row in result.fetchall()])
-                        elif op['operation'] == 'execute':
+                        elif op['operation'] == _EXECUTE_STATEMENT:
                             params = op.get('params', {})
                             if isinstance(params, list):
                                 conn.execute(text(op['query']), params)

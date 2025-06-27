@@ -382,17 +382,37 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - Enhanced error handling and logging
 - Additional performance testing scenarios
 
-### 0.1.3 (2025-06-23)
-- Thread-safe SQLite operations with worker thread pool
-- SQLAlchemy 2.0+ compatibility with modern async patterns
-- Performance optimizations with SQLite-specific pragmas
-- Consolidated API with `execute()` method handling both single and bulk operations
-- Transaction support for complex operations
-- Statistics tracking for monitoring performance
-- Extensive performance testing suite with benchmarks
-- Memory usage monitoring (requires `psutil`)
-- Thread safety through proper connection management
-- WAL mode and optimized cache settings for better concurrency
+### 0.2.4 (2025-06-27)
+- **Test suite refactoring** with removal of private function tests to focus on public API testing
+- **Improved test maintainability** by eliminating tests for internal implementation details
+- **Enhanced nested comment handling** in SQL parsing with more realistic expectations
+- **Better test coverage** focusing on public interface behavior rather than implementation details
+- **Code quality improvements** with cleaner test structure and more maintainable test suite
+- **Documentation updates** reflecting current test coverage and API expectations
+
+### 0.2.3 (2025-06-27)
+- **Enhanced thread safety and concurrency** with improved locking mechanisms and connection management
+- **Optimized database engine performance** with refined worker thread handling and request processing
+- **Improved SQL statement parsing** with better support for complex SQL constructs and edge cases
+- **Enhanced error handling and recovery** with more robust exception management and detailed error reporting
+- **Code quality improvements** with comprehensive test coverage and performance benchmarking
+- **Memory usage optimizations** with better resource management and cleanup procedures
+- **Documentation enhancements** with improved API documentation and usage examples
+
+### 0.2.2 (2025-06-26)
+- **Code refactoring and architectural improvements** for better maintainability and performance
+- **Enhanced error handling and logging** with more detailed exception information
+- **Optimized database performance** with refined SQLite pragma configurations
+- **Enhanced SQL parsing robustness** with better handling of edge cases and malformed SQL
+- **Code documentation improvements** with more detailed docstrings and usage examples
+
+### 0.2.1 (2025-06-26)
+- **Refactored SQL parsing to use sqlparse library** for improved reliability and standards compliance
+- **Enhanced SQL comment removal** with proper handling of comments within string literals
+- **Improved SQL statement parsing** with better handling of complex SQL constructs including BEGIN...END blocks
+- **Added sqlparse dependency** for robust SQL parsing and formatting
+- **Improved error handling** for malformed SQL statements
+- **Better support for complex SQL constructs** including triggers, stored procedures, and multi-line statements
 
 ### 0.2.0 (2025-06-25)
 - **New batch SQL execution feature** for executing multiple SQL statements in a single operation
@@ -405,27 +425,15 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **Improved SQL validation** with comprehensive statement type checking
 - **Enhanced documentation** with batch operation examples and API reference
 
-### 0.2.1 (2025-06-26)
-- **Refactored SQL parsing to use sqlparse library** for improved reliability and standards compliance
-- **Enhanced SQL comment removal** with proper handling of comments within string literals
-- **Improved SQL statement parsing** with better handling of complex SQL constructs including BEGIN...END blocks
-- **Added sqlparse dependency** for robust SQL parsing and formatting
-- **Improved error handling** for malformed SQL statements
-- **Better support for complex SQL constructs** including triggers, stored procedures, and multi-line statements
-
-### 0.2.2 (2025-06-26)
-- **Code refactoring and architectural improvements** for better maintainability and performance
-- **Enhanced error handling and logging** with more detailed exception information
-- **Optimized database performance** with refined SQLite pragma configurations
-- **Enhanced SQL parsing robustness** with better handling of edge cases and malformed SQL
-- **Code documentation improvements** with more detailed docstrings and usage examples
-
-### 0.2.3 (2025-06-27)
-- **Enhanced thread safety and concurrency** with improved locking mechanisms and connection management
-- **Optimized database engine performance** with refined worker thread handling and request processing
-- **Improved SQL statement parsing** with better support for complex SQL constructs and edge cases
-- **Enhanced error handling and recovery** with more robust exception management and detailed error reporting
-- **Code quality improvements** with comprehensive test coverage and performance benchmarking
-- **Memory usage optimizations** with better resource management and cleanup procedures
-- **Documentation enhancements** with improved API documentation and usage examples
+### 0.1.3 (2025-06-23)
+- Thread-safe SQLite operations with worker thread pool
+- SQLAlchemy 2.0+ compatibility with modern async patterns
+- Performance optimizations with SQLite-specific pragmas
+- Consolidated API with `execute()` method handling both single and bulk operations
+- Transaction support for complex operations
+- Statistics tracking for monitoring performance
+- Extensive performance testing suite with benchmarks
+- Memory usage monitoring (requires `psutil`)
+- Thread safety through proper connection management
+- WAL mode and optimized cache settings for better concurrency
 
