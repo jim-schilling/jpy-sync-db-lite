@@ -156,7 +156,12 @@ class DbEngine:
                 conn.execute(text(request.query), request.params)
             else:
                 conn.execute(text(request.query), request.params or {})
-            conn.commit()
+            try:
+                conn.commit()
+            except Exception as commit_error:
+                # Rollback on commit failure
+                conn.rollback()
+                raise DbOperationError(f"Commit failed: {commit_error}")
             if request.response_queue:
                 result = len(request.params) if isinstance(request.params, list) else True
                 request.response_queue.put((_SUCCESS, result))
@@ -226,7 +231,12 @@ class DbEngine:
                 continue
         
         # Commit all changes
-        conn.commit()
+        try:
+            conn.commit()
+        except Exception as commit_error:
+            # Rollback on commit failure
+            conn.rollback()
+            raise DbOperationError(f"Batch commit failed: {commit_error}")
         return results
     
     @contextmanager
