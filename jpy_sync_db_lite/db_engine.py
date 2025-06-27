@@ -24,6 +24,8 @@ _FETCH_STATEMENT = 'fetch'
 _EXECUTE_STATEMENT = 'execute'
 _BATCH_STATEMENT = 'batch'
 _ERROR_STATEMENT = 'error'
+_SUCCESS = 'success'
+_ERROR = 'error'
 
 
 class DbOperationError(Exception):
@@ -133,10 +135,10 @@ class DbEngine:
                 with self.engine.connect() as conn:
                     self._execute_single_request(conn, request)
                     if request.response_queue:
-                        request.response_queue.put(('success', True))
+                        request.response_queue.put((_SUCCESS, True))
         except Exception as e:
             if request.response_queue:
-                request.response_queue.put(('error', str(e)))
+                request.response_queue.put((_ERROR, str(e)))
     
     def _execute_single_request(self, conn: Connection, request: DbRequest) -> None:
         """
@@ -148,7 +150,7 @@ class DbEngine:
             result = conn.execute(text(request.query), request.params or {})
             rows = result.fetchall()
             if request.response_queue:
-                request.response_queue.put(('success', [dict(row._mapping) for row in rows]))
+                request.response_queue.put((_SUCCESS, [dict(row._mapping) for row in rows]))
         elif request.operation == _EXECUTE_STATEMENT:
             if isinstance(request.params, list):
                 conn.execute(text(request.query), request.params)
@@ -157,11 +159,11 @@ class DbEngine:
             conn.commit()
             if request.response_queue:
                 result = len(request.params) if isinstance(request.params, list) else True
-                request.response_queue.put(('success', result))
+                request.response_queue.put((_SUCCESS, result))
         elif request.operation == _BATCH_STATEMENT:
             results = self._execute_batch_statements(conn, request.query, request.params['allow_select'])
             if request.response_queue:
-                request.response_queue.put(('success', results))
+                request.response_queue.put((_SUCCESS, results))
         else:
             raise ValueError(f"Unsupported operation type: {request.operation}")
     
@@ -187,7 +189,7 @@ class DbEngine:
                 # Use detect_statement_type to determine operation type
                 operation_type = detect_statement_type(stmt)
                 
-                if operation_type == 'fetch':
+                if operation_type == _FETCH_STATEMENT:
                     if not allow_select:
                         raise ValueError(f"SELECT statements are not allowed in batch mode. Found: {stmt}")
                     # Execute as fetch operation
@@ -284,7 +286,7 @@ class DbEngine:
         request = DbRequest(_EXECUTE_STATEMENT, query, params, response_queue)
         self.request_queue.put(request)
         status, result = response_queue.get()
-        if status == 'error':
+        if status == _ERROR:
             raise DbOperationError(result)
         return result
 
@@ -303,7 +305,7 @@ class DbEngine:
         request = DbRequest(_FETCH_STATEMENT, query, params, response_queue)
         self.request_queue.put(request)
         status, result = response_queue.get()
-        if status == 'error':
+        if status == _ERROR:
             raise DbOperationError(result)
         return result
 
@@ -354,7 +356,7 @@ class DbEngine:
         request = DbRequest(_BATCH_STATEMENT, batch_sql, {'allow_select': allow_select}, response_queue)
         self.request_queue.put(request)
         status, result = response_queue.get()
-        if status == 'error':
+        if status == _ERROR:
             raise DbOperationError(result)
         return result
 
@@ -489,9 +491,9 @@ if __name__ == "__main__":
     
     # Transaction for complex operations
     operations = [
-        {"operation": "execute", "query": "UPDATE users SET last_login = :now WHERE id = :id", 
+        {"operation": _EXECUTE_STATEMENT, "query": "UPDATE users SET last_login = :now WHERE id = :id", 
          "params": {"now": time.time(), "id": 1}},
-        {"operation": "fetch", "query": "SELECT COUNT(*) as count FROM users"}
+        {"operation": _FETCH_STATEMENT, "query": "SELECT COUNT(*) as count FROM users"}
     ]
     results = db.execute_transaction(operations)
     
