@@ -530,5 +530,294 @@ class TestDetectStatementType(unittest.TestCase):
         self.assertEqual(detect_statement_type(sql), 'fetch')
 
 
+class TestSqlHelperEdgeCases(unittest.TestCase):
+    """Test edge cases and error conditions in sql_helper module."""
+    
+    def test_remove_sql_comments_empty_input(self):
+        """Test comment removal with empty input."""
+        self.assertEqual(remove_sql_comments(""), "")
+        self.assertEqual(remove_sql_comments(None), None)
+        self.assertEqual(remove_sql_comments("   "), "")
+    
+    def test_remove_sql_comments_nested_comments(self):
+        """Test removing nested comments."""
+        sql = """
+        /* Outer comment /* Inner comment */ */
+        SELECT * FROM users; -- Line comment
+        """
+        clean_sql = remove_sql_comments(sql)
+        # Should handle gracefully without errors
+        self.assertIsInstance(clean_sql, str)
+        # Should remove at least some comments
+        self.assertNotIn('--', clean_sql)
+        # May not handle nested comments perfectly, but should not crash
+        self.assertIn('SELECT * FROM users;', clean_sql)
+    
+    def test_remove_sql_comments_incomplete_comments(self):
+        """Test handling incomplete comments."""
+        sql = """
+        SELECT * FROM users; -- Incomplete comment
+        SELECT * FROM users; /* Incomplete comment
+        """
+        clean_sql = remove_sql_comments(sql)
+        # Should handle gracefully without errors
+        self.assertIsInstance(clean_sql, str)
+    
+    def test_parse_sql_statements_malformed_sql(self):
+        """Test parsing malformed SQL statements."""
+        malformed_sql = """
+        SELECT * FROM users; -- Missing semicolon
+        INSERT INTO users VALUES (1, 'John' -- Missing closing quote
+        CREATE TABLE users (id INTEGER -- Missing closing parenthesis
+        """
+        statements = parse_sql_statements(malformed_sql)
+        # Should handle gracefully and return what can be parsed
+        self.assertIsInstance(statements, list)
+    
+    def test_parse_sql_statements_only_semicolons(self):
+        """Test parsing SQL with only semicolons."""
+        sql = ";;;;"
+        statements = parse_sql_statements(sql)
+        self.assertEqual(statements, [])
+    
+    def test_parse_sql_statements_whitespace_only(self):
+        """Test parsing SQL with only whitespace."""
+        sql = "   \n\t   \n"
+        statements = parse_sql_statements(sql)
+        self.assertEqual(statements, [])
+    
+    def test_detect_statement_type_malformed_sql(self):
+        """Test detecting statement type in malformed SQL."""
+        malformed_sql = "SELECT * FROM users -- Missing semicolon"
+        result = detect_statement_type(malformed_sql)
+        self.assertEqual(result, 'fetch')
+        
+        malformed_sql = "INSERT INTO users VALUES (1, 'John' -- Missing closing quote"
+        result = detect_statement_type(malformed_sql)
+        self.assertEqual(result, 'execute')
+    
+    def test_detect_statement_type_very_long_sql(self):
+        """Test detecting statement type in very long SQL."""
+        long_sql = "SELECT " + "a, " * 1000 + "b FROM very_long_table_name"
+        result = detect_statement_type(long_sql)
+        self.assertEqual(result, 'fetch')
+    
+    def test_split_sql_file_empty_file(self):
+        """Test splitting empty SQL file."""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.sql', delete=False) as f:
+            f.write("")
+            temp_file = f.name
+        
+        try:
+            statements = split_sql_file(temp_file)
+            self.assertEqual(statements, [])
+        finally:
+            os.unlink(temp_file)
+    
+    def test_split_sql_file_large_file(self):
+        """Test splitting large SQL file."""
+        large_sql = ""
+        for i in range(1000):
+            large_sql += f"INSERT INTO users VALUES ({i}, 'User{i}');\n"
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.sql', delete=False) as f:
+            f.write(large_sql)
+            temp_file = f.name
+        
+        try:
+            statements = split_sql_file(temp_file)
+            self.assertEqual(len(statements), 1000)
+            for i, stmt in enumerate(statements):
+                self.assertIn(f"INSERT INTO users VALUES ({i}, 'User{i}')", stmt)
+        finally:
+            os.unlink(temp_file)
+    
+    def test_split_sql_file_invalid_path(self):
+        """Test splitting SQL file with invalid path."""
+        with self.assertRaises(ValueError):
+            split_sql_file("")
+        
+        with self.assertRaises(ValueError):
+            split_sql_file(None)
+        
+        with self.assertRaises(ValueError):
+            split_sql_file(123)  # Not a string
+
+
+class TestSqlHelperPerformance(unittest.TestCase):
+    """Test performance characteristics of sql_helper functions."""
+    
+    def test_remove_sql_comments_performance(self):
+        """Test performance of comment removal with large SQL."""
+        import time
+        
+        # Create large SQL with many comments
+        large_sql = ""
+        for i in range(1000):
+            large_sql += f"SELECT * FROM table{i}; -- Comment {i}\n"
+            large_sql += f"/* Multi-line comment {i} */\n"
+        
+        start_time = time.time()
+        clean_sql = remove_sql_comments(large_sql)
+        end_time = time.time()
+        
+        # Should complete in reasonable time (less than 5 second)
+        self.assertLess(end_time - start_time, 5.0)
+        self.assertNotIn('--', clean_sql)
+        self.assertNotIn('/*', clean_sql)
+        self.assertNotIn('*/', clean_sql)
+    
+    def test_parse_sql_statements_performance(self):
+        """Test performance of SQL parsing with many statements."""
+        import time
+        
+        # Create SQL with many statements
+        many_statements = ""
+        for i in range(1000):
+            many_statements += f"INSERT INTO users VALUES ({i}, 'User{i}');\n"
+        
+        start_time = time.time()
+        statements = parse_sql_statements(many_statements)
+        end_time = time.time()
+        
+        # Should complete in reasonable time (less than 5 second)
+        self.assertLess(end_time - start_time, 5.0)
+        self.assertEqual(len(statements), 1000)
+    
+    def test_detect_statement_type_performance(self):
+        """Test performance of statement type detection with complex SQL."""
+        import time
+        
+        # Create complex SQL with CTEs
+        complex_sql = """
+        WITH cte1 AS (
+            SELECT id, name FROM users WHERE active = 1
+        ), cte2 AS (
+            SELECT id, email FROM profiles WHERE verified = 1
+        ), cte3 AS (
+            SELECT id, phone FROM contacts WHERE primary = 1
+        )
+        SELECT c1.name, c2.email, c3.phone 
+        FROM cte1 c1 
+        JOIN cte2 c2 ON c1.id = c2.id
+        JOIN cte3 c3 ON c1.id = c3.id
+        WHERE c1.name LIKE '%John%'
+        """
+        
+        start_time = time.time()
+        for _ in range(1000):
+            result = detect_statement_type(complex_sql)
+        end_time = time.time()
+        
+        # Should complete 1000 iterations in reasonable time (less than 5 second)
+        self.assertLess(end_time - start_time, 5.0)
+        self.assertEqual(result, 'fetch')
+
+
+class TestSqlHelperIntegration(unittest.TestCase):
+    """Test integration scenarios combining multiple sql_helper functions."""
+    
+    def test_full_sql_processing_pipeline(self):
+        """Test complete SQL processing pipeline."""
+        complex_sql = """
+        -- Create users table
+        CREATE TABLE users (
+            id INTEGER PRIMARY KEY, -- user id
+            name TEXT NOT NULL,     /* user name */
+            email TEXT,             -- user email
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        
+        /* Insert some test data */
+        INSERT INTO users (name, email) VALUES ('John Doe', 'john@example.com');
+        INSERT INTO users (name, email) VALUES ('Jane Smith', 'jane@example.com');
+        
+        -- Create index
+        CREATE INDEX idx_users_email ON users(email);
+        
+        -- Query to verify
+        SELECT * FROM users WHERE email LIKE '%@example.com';
+        """
+        
+        # Step 1: Remove comments
+        clean_sql = remove_sql_comments(complex_sql)
+        self.assertNotIn('--', clean_sql)
+        self.assertNotIn('/*', clean_sql)
+        self.assertNotIn('*/', clean_sql)
+        
+        # Step 2: Parse statements
+        statements = parse_sql_statements(clean_sql)
+        self.assertEqual(len(statements), 5)
+        
+        # Step 3: Detect types for each statement
+        expected_types = ['execute', 'execute', 'execute', 'execute', 'fetch']
+        for i, stmt in enumerate(statements):
+            stmt_type = detect_statement_type(stmt)
+            self.assertEqual(stmt_type, expected_types[i])
+    
+    def test_cte_processing_pipeline(self):
+        """Test processing pipeline with complex CTEs."""
+        cte_sql = """
+        WITH user_stats AS (
+            SELECT 
+                user_id,
+                COUNT(*) as post_count, -- comment in CTE
+                AVG(rating) as avg_rating /* another comment */
+            FROM posts 
+            WHERE active = 1
+        ), user_profiles AS (
+            SELECT 
+                id,
+                name,
+                email
+            FROM users 
+            WHERE verified = 1
+        )
+        SELECT 
+            up.name,
+            us.post_count,
+            us.avg_rating
+        FROM user_profiles up
+        JOIN user_stats us ON up.id = us.user_id
+        WHERE us.post_count > 5;
+        """
+        
+        # Process through pipeline
+        clean_sql = remove_sql_comments(cte_sql)
+        statements = parse_sql_statements(clean_sql)
+        self.assertEqual(len(statements), 1)
+        
+        stmt_type = detect_statement_type(statements[0])
+        self.assertEqual(stmt_type, 'fetch')
+    
+    def test_batch_processing_with_file(self):
+        """Test batch processing using file operations."""
+        batch_sql = """
+        -- Batch of operations
+        CREATE TABLE temp_users (id INTEGER, name TEXT);
+        INSERT INTO temp_users VALUES (1, 'User1');
+        INSERT INTO temp_users VALUES (2, 'User2');
+        SELECT * FROM temp_users;
+        DROP TABLE temp_users;
+        """
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.sql', delete=False) as f:
+            f.write(batch_sql)
+            temp_file = f.name
+        
+        try:
+            # Read and process file
+            statements = split_sql_file(temp_file)
+            self.assertEqual(len(statements), 5)
+            
+            # Process each statement
+            for stmt in statements:
+                clean_stmt = remove_sql_comments(stmt)
+                stmt_type = detect_statement_type(clean_stmt)
+                self.assertIn(stmt_type, ['execute', 'fetch'])
+        finally:
+            os.unlink(temp_file)
+
+
 if __name__ == '__main__':
     unittest.main() 
