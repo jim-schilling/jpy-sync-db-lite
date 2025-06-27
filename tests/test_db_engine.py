@@ -834,6 +834,222 @@ class TestDbEngine(unittest.TestCase):
             count_result = results[3]['result']
             self.assertEqual(count_result[0]['count'], 2)
 
+    def test_batch_with_cte_and_advanced_statements(self):
+        """Test batch execution with CTEs, VALUES, and other advanced statement types."""
+        batch_sql = """
+        -- Create test tables
+        CREATE TABLE IF NOT EXISTS departments (
+            id INTEGER PRIMARY KEY,
+            name TEXT NOT NULL
+        );
+        
+        CREATE TABLE IF NOT EXISTS employees (
+            id INTEGER PRIMARY KEY,
+            name TEXT NOT NULL,
+            department_id INTEGER,
+            salary REAL
+        );
+        
+        -- Insert data using VALUES
+        INSERT INTO departments (name) VALUES ('Engineering'), ('Sales'), ('Marketing');
+        
+        -- Insert employee data
+        INSERT INTO employees (name, department_id, salary) VALUES 
+            ('Alice', 1, 75000),
+            ('Bob', 1, 80000),
+            ('Charlie', 2, 65000),
+            ('Diana', 3, 70000);
+        
+        -- Query with CTE (Common Table Expression)
+        WITH dept_stats AS (
+            SELECT 
+                d.name as dept_name,
+                COUNT(e.id) as emp_count,
+                AVG(e.salary) as avg_salary
+            FROM departments d
+            LEFT JOIN employees e ON d.id = e.department_id
+            GROUP BY d.id, d.name
+        )
+        SELECT * FROM dept_stats ORDER BY avg_salary DESC;
+        
+        -- Another CTE with recursive pattern
+        WITH RECURSIVE numbers AS (
+            SELECT 1 as n
+            UNION ALL
+            SELECT n + 1 FROM numbers WHERE n < 5
+        )
+        SELECT n, n * n as square FROM numbers;
+        
+        -- VALUES statement
+        VALUES (1, 'Test1'), (2, 'Test2'), (3, 'Test3');
+        
+        -- PRAGMA statement
+        PRAGMA table_info(employees);
+        
+        -- EXPLAIN statement
+        EXPLAIN QUERY PLAN SELECT * FROM employees WHERE salary > 70000;
+        
+        -- DESCRIBE statement (SQLite doesn't support DESCRIBE, but test the detection)
+        SELECT sql FROM sqlite_master WHERE type='table' AND name='employees';
+        """
+        
+        results = self.db_engine.batch(batch_sql)
+        
+        # Verify results
+        self.assertEqual(len(results), 10)  # 10 statements total
+        
+        # Check DDL statements (CREATE TABLE)
+        self.assertEqual(results[0]['type'], 'execute')  # CREATE TABLE departments
+        self.assertEqual(results[1]['type'], 'execute')  # CREATE TABLE employees
+        
+        # Check DML statements (INSERT)
+        self.assertEqual(results[2]['type'], 'execute')  # INSERT departments
+        self.assertEqual(results[3]['type'], 'execute')  # INSERT employees
+        
+        # Check CTE with SELECT (should be fetch)
+        self.assertEqual(results[4]['type'], 'fetch')    # CTE dept_stats
+        self.assertEqual(results[5]['type'], 'fetch')    # CTE numbers
+        
+        # Check VALUES statement (should be fetch)
+        self.assertEqual(results[6]['type'], 'fetch')    # VALUES
+        
+        # Check PRAGMA statement (should be fetch)
+        self.assertEqual(results[7]['type'], 'fetch')    # PRAGMA
+        
+        # Check EXPLAIN statement (should be fetch)
+        self.assertEqual(results[8]['type'], 'fetch')    # EXPLAIN
+        
+        # Check DESCRIBE-like statement (should be fetch)
+        self.assertEqual(results[9]['type'], 'fetch')    # SELECT from sqlite_master
+        
+        # Verify CTE results
+        dept_stats_result = results[4]['result']
+        self.assertGreater(len(dept_stats_result), 0)
+        self.assertIn('dept_name', dept_stats_result[0])
+        self.assertIn('emp_count', dept_stats_result[0])
+        self.assertIn('avg_salary', dept_stats_result[0])
+        
+        # Verify recursive CTE results
+        numbers_result = results[5]['result']
+        self.assertEqual(len(numbers_result), 5)  # Numbers 1-5
+        self.assertEqual(numbers_result[0]['n'], 1)
+        self.assertEqual(numbers_result[4]['n'], 5)
+        self.assertEqual(numbers_result[4]['square'], 25)
+        
+        # Verify VALUES results
+        values_result = results[6]['result']
+        self.assertEqual(len(values_result), 3)
+        self.assertEqual(values_result[0]['column1'], 1)
+        self.assertEqual(values_result[0]['column2'], 'Test1')
+        
+        # Verify PRAGMA results
+        pragma_result = results[7]['result']
+        self.assertGreater(len(pragma_result), 0)
+        self.assertIn('name', pragma_result[0])
+        self.assertIn('type', pragma_result[0])
+        
+        # Verify EXPLAIN results
+        explain_result = results[8]['result']
+        self.assertGreater(len(explain_result), 0)
+        
+        # Verify data was actually inserted
+        dept_data = self.db_engine.fetch("SELECT * FROM departments ORDER BY id")
+        self.assertEqual(len(dept_data), 3)
+        
+        emp_data = self.db_engine.fetch("SELECT * FROM employees ORDER BY id")
+        self.assertEqual(len(emp_data), 4)
+
+    def test_batch_with_complex_cte_nested(self):
+        """Test batch execution with complex nested CTEs."""
+        batch_sql = """
+        -- Create test data
+        CREATE TABLE IF NOT EXISTS sales (
+            id INTEGER PRIMARY KEY,
+            product TEXT,
+            amount REAL,
+            date TEXT
+        );
+        
+        INSERT INTO sales (product, amount, date) VALUES 
+            ('Widget A', 100.0, '2024-01-01'),
+            ('Widget B', 150.0, '2024-01-01'),
+            ('Widget A', 120.0, '2024-01-02'),
+            ('Widget C', 200.0, '2024-01-02'),
+            ('Widget B', 180.0, '2024-01-03');
+        
+        -- Complex nested CTEs
+        WITH daily_totals AS (
+            SELECT 
+                date,
+                SUM(amount) as daily_sum,
+                COUNT(*) as transaction_count
+            FROM sales
+            GROUP BY date
+        ),
+        product_totals AS (
+            SELECT 
+                product,
+                SUM(amount) as product_sum,
+                COUNT(*) as product_count
+            FROM sales
+            GROUP BY product
+        ),
+        combined_stats AS (
+            SELECT 
+                'Daily' as stat_type,
+                date as identifier,
+                daily_sum as total_amount,
+                transaction_count as count
+            FROM daily_totals
+            UNION ALL
+            SELECT 
+                'Product' as stat_type,
+                product as identifier,
+                product_sum as total_amount,
+                product_count as count
+            FROM product_totals
+        )
+        SELECT 
+            stat_type,
+            identifier,
+            total_amount,
+            count,
+            ROUND(total_amount / count, 2) as avg_amount
+        FROM combined_stats
+        ORDER BY total_amount DESC;
+        """
+        
+        results = self.db_engine.batch(batch_sql)
+        
+        # Verify results
+        self.assertEqual(len(results), 3)  # CREATE + INSERT + complex CTE
+        
+        # Check statement types
+        self.assertEqual(results[0]['type'], 'execute')  # CREATE TABLE
+        self.assertEqual(results[1]['type'], 'execute')  # INSERT
+        self.assertEqual(results[2]['type'], 'fetch')    # Complex CTE
+        
+        # Verify CTE results
+        cte_result = results[2]['result']
+        self.assertGreater(len(cte_result), 0)
+        
+        # Should have both daily and product stats
+        stat_types = [row['stat_type'] for row in cte_result]
+        self.assertIn('Daily', stat_types)
+        self.assertIn('Product', stat_types)
+        
+        # Verify data structure
+        first_row = cte_result[0]
+        self.assertIn('stat_type', first_row)
+        self.assertIn('identifier', first_row)
+        self.assertIn('total_amount', first_row)
+        self.assertIn('count', first_row)
+        self.assertIn('avg_amount', first_row)
+        
+        # Verify data was inserted
+        sales_data = self.db_engine.fetch("SELECT COUNT(*) as count FROM sales")
+        self.assertEqual(sales_data[0]['count'], 5)
+
 
 class TestDbEngineEdgeCases(unittest.TestCase):
     """Test edge cases and error conditions for DbEngine."""
