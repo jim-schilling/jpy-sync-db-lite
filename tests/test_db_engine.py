@@ -19,7 +19,7 @@ from sqlalchemy import text
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from jpy_sync_db_lite.db_engine import DbEngine
+from jpy_sync_db_lite.db_engine import DbEngine, DbOperationError
 from jpy_sync_db_lite.db_request import DbRequest
 
 
@@ -345,17 +345,17 @@ class TestDbEngine(unittest.TestCase):
     
     def test_error_handling_invalid_sql(self):
         """Test error handling for invalid SQL."""
-        with self.assertRaises(Exception):
+        with self.assertRaises(DbOperationError):
             self.db_engine.execute("INVALID SQL STATEMENT")
     
     def test_error_handling_missing_table(self):
         """Test error handling for queries on non-existent table."""
-        with self.assertRaises(Exception):
+        with self.assertRaises(DbOperationError):
             self.db_engine.fetch("SELECT * FROM non_existent_table")
     
     def test_error_handling_missing_parameter(self):
         """Test error handling for missing parameters."""
-        with self.assertRaises(Exception):
+        with self.assertRaises(DbOperationError):
             self.db_engine.fetch("SELECT * FROM test_users WHERE id = :id")
     
     def test_shutdown_cleanup(self):
@@ -1074,14 +1074,14 @@ class TestDbEngine(unittest.TestCase):
         )
         
         # Try to insert duplicate unique field - this should cause a constraint violation
-        with self.assertRaises(Exception) as context:
+        with self.assertRaises(DbOperationError) as context:
             self.db_engine.execute(
                 "INSERT INTO commit_test (unique_field, data) VALUES (:field, :data)",
                 {"field": "test1", "data": "value2"}  # Duplicate unique_field
             )
         
         # Verify that the error is properly wrapped in DbOperationError
-        self.assertIsInstance(context.exception, Exception)
+        self.assertIsInstance(context.exception, DbOperationError)
         
         # Verify that the original data is still intact (rollback worked)
         result = self.db_engine.fetch("SELECT COUNT(*) as count FROM commit_test WHERE unique_field = 'test1'")
@@ -1151,7 +1151,7 @@ class TestDbEngine(unittest.TestCase):
              "params": {"field": "account1", "balance": 200}}  # Duplicate unique_field
         ]
         
-        with self.assertRaises(Exception):
+        with self.assertRaises(Exception):  # Keep as Exception since execute_transaction doesn't wrap in DbOperationError
             self.db_engine.execute_transaction(operations)
         
         # Verify that the original data is unchanged (rollback worked)
@@ -1172,14 +1172,14 @@ class TestDbEngine(unittest.TestCase):
         self.db_engine.execute(create_sql)
         
         # Try to insert data that violates the CHECK constraint
-        with self.assertRaises(Exception) as context:
+        with self.assertRaises(DbOperationError) as context:
             self.db_engine.execute(
                 "INSERT INTO check_constraint_test (age, name) VALUES (:age, :name)",
                 {"age": 200, "name": "Invalid Age"}  # Age > 150 violates constraint
             )
         
         # Verify the error is properly handled
-        self.assertIsInstance(context.exception, Exception)
+        self.assertIsInstance(context.exception, DbOperationError)
         
         # Verify no data was inserted
         result = self.db_engine.fetch("SELECT COUNT(*) as count FROM check_constraint_test")
@@ -1210,14 +1210,14 @@ class TestDbEngine(unittest.TestCase):
         self.db_engine.execute(child_sql)
         
         # Try to insert child record with non-existent parent
-        with self.assertRaises(Exception) as context:
+        with self.assertRaises(DbOperationError) as context:
             self.db_engine.execute(
                 "INSERT INTO child_table (parent_id, data) VALUES (:parent_id, :data)",
                 {"parent_id": 999, "data": "orphaned data"}  # Parent doesn't exist
             )
         
         # Verify the error is properly handled
-        self.assertIsInstance(context.exception, Exception)
+        self.assertIsInstance(context.exception, DbOperationError)
         
         # Verify no data was inserted
         result = self.db_engine.fetch("SELECT COUNT(*) as count FROM child_table")
@@ -1242,7 +1242,7 @@ class TestDbEngine(unittest.TestCase):
         )
         
         # Second operation: constraint violation due to duplicate
-        with self.assertRaises(Exception):
+        with self.assertRaises(DbOperationError):
             self.db_engine.execute(
                 "INSERT INTO recovery_test (unique_field, data) VALUES (:field, :data)",
                 {"field": "test1", "data": "value2"}  # Duplicate
@@ -1265,18 +1265,18 @@ class TestDbEngine(unittest.TestCase):
     def test_error_handling_wrapping_verification(self):
         """Test that errors are properly wrapped in DbOperationError."""
         # Test with invalid SQL
-        with self.assertRaises(Exception) as context:
+        with self.assertRaises(DbOperationError) as context:
             self.db_engine.execute("INVALID SQL STATEMENT")
         
         # Verify the error is properly wrapped
-        self.assertIsInstance(context.exception, Exception)
+        self.assertIsInstance(context.exception, DbOperationError)
         
         # Test with missing table
-        with self.assertRaises(Exception) as context:
+        with self.assertRaises(DbOperationError) as context:
             self.db_engine.fetch("SELECT * FROM non_existent_table")
         
         # Verify the error is properly wrapped
-        self.assertIsInstance(context.exception, Exception)
+        self.assertIsInstance(context.exception, DbOperationError)
 
 
 class TestDbEngineEdgeCases(unittest.TestCase):
@@ -1349,7 +1349,7 @@ class TestDbEngineEdgeCases(unittest.TestCase):
         os.chmod(self.temp_db_path, 0o444)  # Read-only
         
         # Should handle gracefully
-        with self.assertRaises(Exception):
+        with self.assertRaises(Exception):  # Keep as Exception since this is during initialization
             DbEngine(self.database_url)
         
         # Restore permissions for cleanup
@@ -1566,15 +1566,6 @@ class TestDbEngineSQLiteSpecific(unittest.TestCase):
         users = self.db_engine.fetch("SELECT * FROM test_users")
         self.assertEqual(len(users), 2)  # Should have 2 users remaining
     
-    def test_vacuum_incremental(self):
-        """Test incremental VACUUM operation."""
-        # Run VACUUM (SQLite doesn't support INCREMENTAL mode parameter)
-        self.db_engine.vacuum()
-        
-        # Should not raise an exception
-        users = self.db_engine.fetch("SELECT * FROM test_users")
-        self.assertEqual(len(users), 3)
-    
     def test_analyze_operation(self):
         """Test SQLite ANALYZE operation."""
         # Run ANALYZE on all tables
@@ -1631,9 +1622,9 @@ class TestDbEngineSQLiteSpecific(unittest.TestCase):
         try:
             self.db_engine.vacuum()
             # If vacuum succeeds, that's fine - we're just testing error wrapping
-        except Exception as e:
+        except DbOperationError as e:
             # If an error occurs, it should be wrapped in DbOperationError
-            self.assertIsInstance(e, Exception)
+            self.assertIsInstance(e, DbOperationError)
             self.assertIn("VACUUM operation failed", str(e))
     
     def test_analyze_error_handling(self):
@@ -1642,9 +1633,9 @@ class TestDbEngineSQLiteSpecific(unittest.TestCase):
         try:
             self.db_engine.analyze('non_existent_table')
             # If analyze succeeds, that's fine - we're just testing error wrapping
-        except Exception as e:
+        except DbOperationError as e:
             # If an error occurs, it should be wrapped in DbOperationError
-            self.assertIsInstance(e, Exception)
+            self.assertIsInstance(e, DbOperationError)
             self.assertIn("ANALYZE operation failed", str(e))
     
     def test_integrity_check_error_handling(self):
@@ -1654,9 +1645,9 @@ class TestDbEngineSQLiteSpecific(unittest.TestCase):
             issues = self.db_engine.integrity_check()
             # If integrity check succeeds, that's fine - we're just testing error wrapping
             self.assertIsInstance(issues, list)
-        except Exception as e:
+        except DbOperationError as e:
             # If an error occurs, it should be wrapped in DbOperationError
-            self.assertIsInstance(e, Exception)
+            self.assertIsInstance(e, DbOperationError)
             self.assertIn("Integrity check failed", str(e))
     
     def test_optimize_error_handling(self):
@@ -1665,9 +1656,9 @@ class TestDbEngineSQLiteSpecific(unittest.TestCase):
         try:
             self.db_engine.optimize()
             # If optimize succeeds, that's fine - we're just testing error wrapping
-        except Exception as e:
+        except DbOperationError as e:
             # If an error occurs, it should be wrapped in DbOperationError
-            self.assertIsInstance(e, Exception)
+            self.assertIsInstance(e, DbOperationError)
             self.assertIn("Optimization operation failed", str(e))
     
     def test_maintenance_operations_error_wrapping(self):
@@ -1687,9 +1678,9 @@ class TestDbEngineSQLiteSpecific(unittest.TestCase):
             try:
                 operation()
                 # If operation succeeds, that's fine - we're just testing error wrapping
-            except Exception as e:
+            except DbOperationError as e:
                 # If an error occurs, it should be wrapped in DbOperationError
-                self.assertIsInstance(e, Exception)
+                self.assertIsInstance(e, DbOperationError)
                 self.assertIn(expected_error_text, str(e))
     
     def test_sqlite_error_class(self):
