@@ -702,6 +702,6 @@ if __name__ == "__main__":
     print("Performance stats:", db.get_stats())
     
     # Optional: Run VACUUM for space reclamation (use sparingly)
-    # db.vacuum('FULL')  # Uncomment if needed
+    # db.vacuum()  # Uncomment if needed
     
     db.shutdown()
