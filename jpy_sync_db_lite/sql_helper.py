@@ -7,7 +7,7 @@ Please keep this header when you use this code.
 
 This module is licensed under the MIT License.
 """
-from typing import List
+from typing import List, Optional, Tuple, Any
 import sqlparse
 from sqlparse.tokens import Comment, Keyword, DML
 
@@ -49,7 +49,7 @@ def remove_sql_comments(sql_text: str) -> str:
     return sqlparse.format(sql_text, strip_comments=True)
 
 
-def _is_fetch_statement(statement_type):
+def _is_fetch_statement(statement_type: str) -> bool:
     """
     Determine if a statement type returns rows (fetch) or not (execute).
     
@@ -74,7 +74,7 @@ def _is_fetch_statement(statement_type):
     return statement_type in _FETCH_STATEMENT_TYPES
 
 
-def _is_dml_statement(statement_type):
+def _is_dml_statement(statement_type: str) -> bool:
     """
     Determine if a statement type is a DML (Data Manipulation Language) statement.
     
@@ -99,7 +99,7 @@ def _is_dml_statement(statement_type):
     return statement_type in _DML_STATEMENT_TYPES
 
 
-def _find_first_dml_keyword_top_level(tokens):
+def _find_first_dml_keyword_top_level(tokens: List[Any]) -> Optional[str]:
     """
     Find first DML/Keyword at the top level after WITH (do not recurse into groups).
     
@@ -131,7 +131,7 @@ def _find_first_dml_keyword_top_level(tokens):
     return None
 
 
-def _find_main_statement_after_ctes(tokens):
+def _find_main_statement_after_ctes(tokens: List[Any]) -> Optional[str]:
     """
     Find the main statement after CTE definitions by looking for the first DML after all CTE groups.
     
@@ -201,7 +201,7 @@ def _find_main_statement_after_ctes(tokens):
     return None
 
 
-def _next_non_ws_comment_token(tokens, start=0):
+def _next_non_ws_comment_token(tokens: List[Any], start: int = 0) -> Tuple[Optional[int], Optional[Any]]:
     """
     Find the next non-whitespace, non-comment token.
     
@@ -228,7 +228,7 @@ def _next_non_ws_comment_token(tokens, start=0):
     return None, None
 
 
-def _is_with_keyword(token):
+def _is_with_keyword(token: Any) -> bool:
     """
     Check if a token represents the 'WITH' keyword.
     
@@ -245,7 +245,7 @@ def _is_with_keyword(token):
             token.value.strip().upper() == _WITH_KEYWORD)
 
 
-def _find_with_keyword_index(tokens):
+def _find_with_keyword_index(tokens: List[Any]) -> Optional[int]:
     """
     Find the index of the 'WITH' keyword in a list of tokens.
     
@@ -264,7 +264,7 @@ def _find_with_keyword_index(tokens):
     return None
 
 
-def _extract_tokens_after_with(stmt):
+def _extract_tokens_after_with(stmt: Any) -> List[Any]:
     """
     Extract tokens that come after the WITH keyword in a CTE statement.
     

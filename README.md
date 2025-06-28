@@ -15,6 +15,9 @@ A lightweight, thread-safe SQLite database wrapper built on SQLAlchemy with opti
 - **Transaction support** for complex operations
 - **Statistics tracking** for monitoring performance
 - **Robust SQL parsing** using sqlparse library for reliable statement parsing
+- **SQLite-specific management** with VACUUM, ANALYZE, integrity checks, and PRAGMA configuration
+- **Database optimization tools** for performance tuning and maintenance
+- **Enhanced error handling** with SQLite-specific exception types
 
 ## Installation
 
@@ -46,6 +49,15 @@ db = DbEngine('sqlite:///my_database.db',
               num_workers=1, 
               debug=False)
 
+# Get SQLite information
+sqlite_info = db.get_sqlite_info()
+print(f"SQLite version: {sqlite_info['version']}")
+print(f"Database size: {sqlite_info['database_size']} bytes")
+
+# Configure SQLite settings for better performance
+db.configure_pragma('cache_size', '-128000')  # 128MB cache
+db.configure_pragma('synchronous', 'NORMAL')   # Balance speed and safety
+
 # Create a table
 db.execute("""
     CREATE TABLE IF NOT EXISTS users (
@@ -64,6 +76,17 @@ db.execute(
 # Fetch data
 users = db.fetch("SELECT * FROM users WHERE name = :name", {"name": "John Doe"})
 print(users)  # [{'id': 1, 'name': 'John Doe', 'email': 'john@example.com'}]
+
+# Run SQLite maintenance operations
+db.analyze()  # Update query planner statistics
+db.optimize()  # Run optimization commands
+
+# Check database integrity
+issues = db.integrity_check()
+if issues:
+    print(f"Integrity issues: {issues}")
+else:
+    print("Database integrity check passed")
 
 # Batch operations - execute multiple SQL statements
 batch_sql = """
@@ -87,6 +110,9 @@ batch_sql = """
 batch_results = db.batch(batch_sql)
 print(f"Batch executed {len(batch_results)} statements")
 
+# Optional: Run VACUUM for space reclamation (use sparingly)
+# db.vacuum()
+
 # Cleanup
 db.shutdown()
 ```
@@ -107,6 +133,8 @@ DbEngine(database_url: str, **kwargs)
 - `database_url`: SQLAlchemy database URL (e.g., 'sqlite:///database.db')
 - `num_workers`: Number of worker threads (default: 1)
 - `debug`: Enable SQLAlchemy echo mode (default: False)
+- `timeout`: SQLite connection timeout in seconds (default: 30)
+- `check_same_thread`: SQLite thread safety check (default: False)
 
 #### Methods
 
@@ -166,6 +194,96 @@ Gracefully shutdown the database engine and worker threads.
 ```python
 db.shutdown()
 ```
+
+##### get_sqlite_info()
+Get SQLite-specific information and statistics.
+
+```python
+info = db.get_sqlite_info()
+print(f"SQLite version: {info['version']}")
+print(f"Database size: {info['database_size']} bytes")
+print(f"Journal mode: {info['journal_mode']}")
+print(f"Cache size: {info['cache_size']}")
+```
+
+**Returns:**
+Dictionary containing SQLite information:
+- `version`: SQLite version string
+- `database_size`: Database file size in bytes (None for in-memory)
+- `page_count`: Number of pages in database
+- `page_size`: Page size in bytes
+- `cache_size`: Current cache size
+- `journal_mode`: Current journal mode (wal, delete, truncate, persist, memory, off)
+- `synchronous`: Current synchronous mode (0=OFF, 1=NORMAL, 2=FULL)
+- `temp_store`: Current temp store mode (0=DEFAULT, 1=FILE, 2=MEMORY)
+- `mmap_size`: Memory map size in bytes
+- `busy_timeout`: Busy timeout in milliseconds
+
+##### configure_pragma(pragma_name, value)
+Configure a specific SQLite PRAGMA setting.
+
+```python
+# Set cache size to 128MB
+db.configure_pragma('cache_size', '-128000')
+
+# Set synchronous mode to FULL for maximum durability
+db.configure_pragma('synchronous', 'FULL')
+
+# Set busy timeout to 60 seconds
+db.configure_pragma('busy_timeout', '60000')
+```
+
+**Parameters:**
+- `pragma_name`: Name of the PRAGMA (e.g., 'cache_size', 'synchronous', 'busy_timeout')
+- `value`: Value to set for the PRAGMA
+
+##### vacuum()
+Perform SQLite VACUUM operation to reclaim space and optimize database.
+
+```python
+# Reclaim space and optimize database
+db.vacuum()
+```
+
+**Note:** VACUUM requires exclusive access to the database and may take time for large databases.
+
+##### analyze(table_name=None)
+Update SQLite query planner statistics for better query performance.
+
+```python
+# Analyze all tables
+db.analyze()
+
+# Analyze specific table
+db.analyze('users')
+```
+
+**Parameters:**
+- `table_name`: Specific table to analyze (None for all tables)
+
+##### integrity_check()
+Perform SQLite integrity check and return any issues found.
+
+```python
+issues = db.integrity_check()
+if issues:
+    print(f"Database integrity issues found: {issues}")
+else:
+    print("Database integrity check passed")
+```
+
+**Returns:**
+List of integrity issues (empty list if database is healthy)
+
+##### optimize()
+Run SQLite optimization commands for better performance.
+
+```python
+# Run optimization commands
+db.optimize()
+```
+
+This method runs `PRAGMA optimize` and `ANALYZE` to improve query performance.
 
 ##### batch(batch_sql, allow_select=True)
 Execute multiple SQL statements in a batch with thread safety.
@@ -381,6 +499,27 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - Performance improvements and optimizations
 - Enhanced error handling and logging
 - Additional performance testing scenarios
+
+### 0.2.5 (2025-06-28)
+- **Enhanced error handling for database maintenance operations** with proper exception wrapping and rollback support
+- **Improved robustness of maintenance methods** (`vacuum`, `analyze`, `integrity_check`, `optimize`) with try-catch blocks
+- **Better error messages** for maintenance operations with descriptive failure descriptions
+- **Comprehensive test coverage** for error handling scenarios in maintenance operations
+- **Consistent error handling patterns** across all database maintenance methods
+- **Enhanced SQLite-specific functionality** with comprehensive database management features
+- **New `get_sqlite_info()` method** to retrieve SQLite version, database statistics, and PRAGMA values
+- **New `configure_pragma()` method** for dynamic SQLite PRAGMA configuration (cache_size, synchronous, etc.)
+- **New `vacuum()` method** for database space reclamation and optimization
+- **New `analyze()` method** for updating query planner statistics (all tables or specific table)
+- **New `integrity_check()` method** for database integrity verification
+- **New `optimize()` method** for running SQLite optimization commands
+- **Enhanced engine configuration** with SQLite-specific connection parameters (timeout, check_same_thread)
+- **Improved transaction support** with proper isolation level configuration (DEFERRED mode)
+- **Enhanced performance configuration** with additional SQLite pragmas (foreign_keys, busy_timeout, auto_vacuum)
+- **Comprehensive SQLite-specific test suite** with 16 new test methods covering all new functionality
+- **Better error handling** with SQLiteError exception class for SQLite-specific errors
+- **Documentation updates** with complete API reference for all new SQLite-specific methods
+- **Performance optimizations** with enhanced SQLite pragma settings for better concurrency and reliability
 
 ### 0.2.4 (2025-06-27)
 - **Test suite refactoring** with removal of private function tests to focus on public API testing

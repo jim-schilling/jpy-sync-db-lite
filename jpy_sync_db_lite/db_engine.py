@@ -35,6 +35,16 @@ class DbOperationError(Exception):
     pass
 
 
+class SQLiteError(Exception):
+    """
+    SQLite-specific exception with error code and message.
+    """
+    def __init__(self, error_code: int, message: str):
+        self.error_code = error_code
+        self.message = message
+        super().__init__(f"SQLite error {error_code}: {message}")
+
+
 class DbEngine:
     def __init__(self, database_url: str, **kwargs) -> None:
         """
@@ -43,16 +53,19 @@ class DbEngine:
         Args:
             database_url: SQLAlchemy database URL (e.g., 'sqlite:///database.db')
             **kwargs: Additional configuration options:
-                - num_workers: Number of worker threads (default: 2)
+                - num_workers: Number of worker threads (default: 1)
                 - debug: Enable SQLAlchemy echo mode (default: False)
+                - timeout: SQLite connection timeout in seconds (default: 30)
+                - check_same_thread: SQLite thread safety check (default: False)
         """
-        # Performance-tuned engine configuration
+        # SQLite-specific engine configuration
         self.engine = create_engine(
             database_url,
             poolclass=StaticPool,
             connect_args={
-                'check_same_thread': False,
-                'timeout': 30,
+                'check_same_thread': kwargs.get('check_same_thread', False),
+                'timeout': kwargs.get('timeout', 30),
+                'isolation_level': 'DEFERRED',  # Enable proper transaction support
             },
             echo=kwargs.get('debug', False)
         )
@@ -83,6 +96,7 @@ class DbEngine:
         - WAL mode for better concurrency
         - Optimized cache and memory settings
         - Query planner optimization
+        - Additional performance tuning
         """
         with self.engine.connect() as conn:
             # Enable WAL mode for better concurrency
@@ -95,7 +109,29 @@ class DbEngine:
             conn.execute(text("PRAGMA mmap_size=268435456"))  # 256MB memory map
             conn.execute(text("PRAGMA optimize"))             # Query planner optimization
             
+            # Additional SQLite optimizations
+            conn.execute(text("PRAGMA foreign_keys=ON"))      # Enable foreign key constraints
+            conn.execute(text("PRAGMA busy_timeout=30000"))   # 30 second busy timeout
+            conn.execute(text("PRAGMA auto_vacuum=INCREMENTAL"))  # Incremental vacuum for space efficiency
+            
             conn.commit()
+    
+    def configure_pragma(self, pragma_name: str, value: str) -> None:
+        """
+        Configure a specific SQLite PRAGMA setting.
+        
+        Args:
+            pragma_name: Name of the PRAGMA (e.g., 'cache_size', 'synchronous')
+            value: Value to set for the PRAGMA
+            
+        Example:
+            db.configure_pragma('cache_size', '-128000')  # 128MB cache
+            db.configure_pragma('synchronous', 'OFF')     # Fastest sync mode
+        """
+        with self._db_engine_lock():
+            with self.engine.connect() as conn:
+                conn.execute(text(f"PRAGMA {pragma_name}={value}"))
+                conn.commit()
     
     def _worker(self) -> None:
         """
@@ -268,6 +304,59 @@ class DbEngine:
             'queue_size': self.request_queue.qsize(),
         }
     
+    def get_sqlite_info(self) -> Dict[str, Any]:
+        """
+        Get SQLite-specific information and statistics.
+        
+        Returns:
+            Dictionary containing SQLite information:
+                - 'version': SQLite version
+                - 'database_size': Database file size in bytes
+                - 'page_count': Number of pages in database
+                - 'page_size': Page size in bytes
+                - 'cache_size': Current cache size
+                - 'journal_mode': Current journal mode
+                - 'synchronous': Current synchronous mode
+                - 'temp_store': Current temp store mode
+        """
+        with self._db_engine_lock():
+            with self.engine.connect() as conn:
+                # Get SQLite version
+                version_result = conn.execute(text("SELECT sqlite_version() as version"))
+                version = version_result.fetchone()[0]
+                
+                # Get database statistics
+                pragmas = [
+                    'page_count', 'page_size', 'cache_size', 'journal_mode',
+                    'synchronous', 'temp_store', 'mmap_size', 'busy_timeout'
+                ]
+                
+                pragma_values = {}
+                for pragma in pragmas:
+                    try:
+                        result = conn.execute(text(f"PRAGMA {pragma}"))
+                        value = result.fetchone()[0]
+                        pragma_values[pragma] = value
+                    except Exception:
+                        pragma_values[pragma] = None
+                
+                # Get database file size if possible
+                try:
+                    import os
+                    db_path = self.engine.url.database
+                    if db_path and os.path.exists(db_path):
+                        database_size = os.path.getsize(db_path)
+                    else:
+                        database_size = None
+                except Exception:
+                    database_size = None
+                
+                return {
+                    'version': version,
+                    'database_size': database_size,
+                    **pragma_values
+                }
+    
     def shutdown(self) -> None:
         """
         Clean shutdown of all threads and database connections.
@@ -430,11 +519,95 @@ class DbEngine:
             finally:
                 conn.close()
 
+    def vacuum(self) -> None:
+        """
+        Perform SQLite VACUUM operation to reclaim space and optimize database.
+        Note: VACUUM requires exclusive access to the database.
+        Note: VACUUM does not support mode parameters.
+        """
+        with self._db_engine_lock():
+            with self.engine.connect() as conn:
+                try:
+                    conn.execute(text("VACUUM"))
+                    conn.commit()
+                except Exception as e:
+                    conn.rollback()
+                    raise DbOperationError(f"VACUUM operation failed: {e}")
+    
+    def analyze(self, table_name: Optional[str] = None) -> None:
+        """
+        Update SQLite query planner statistics for better query performance.
+        
+        Args:
+            table_name: Specific table to analyze (None for all tables)
+        """
+        with self._db_engine_lock():
+            with self.engine.connect() as conn:
+                try:
+                    if table_name:
+                        conn.execute(text(f"ANALYZE {table_name}"))
+                    else:
+                        conn.execute(text("ANALYZE"))
+                    conn.commit()
+                except Exception as e:
+                    conn.rollback()
+                    raise DbOperationError(f"ANALYZE operation failed: {e}")
+    
+    def integrity_check(self) -> List[str]:
+        """
+        Perform SQLite integrity check and return any issues found.
+        
+        Returns:
+            List of integrity issues (empty list if database is healthy)
+        """
+        with self._db_engine_lock():
+            with self.engine.connect() as conn:
+                try:
+                    result = conn.execute(text("PRAGMA integrity_check"))
+                    rows = result.fetchall()
+                    
+                    issues = []
+                    for row in rows:
+                        if row[0] != 'ok':
+                            issues.append(row[0])
+                    
+                    return issues
+                except Exception as e:
+                    raise DbOperationError(f"Integrity check failed: {e}")
+    
+    def optimize(self) -> None:
+        """
+        Run SQLite optimization commands for better performance.
+        """
+        with self._db_engine_lock():
+            with self.engine.connect() as conn:
+                try:
+                    # Run optimize pragma
+                    conn.execute(text("PRAGMA optimize"))
+                    
+                    # Update statistics
+                    conn.execute(text("ANALYZE"))
+                    
+                    conn.commit()
+                except Exception as e:
+                    conn.rollback()
+                    raise DbOperationError(f"Optimization operation failed: {e}")
+
 
 # Usage examples
 if __name__ == "__main__":
-    # Initialize with performance settings
-    db = DbEngine("sqlite:///myapp.db")
+    # Initialize with SQLite-specific settings
+    db = DbEngine("sqlite:///myapp.db", timeout=60, check_same_thread=False)
+    
+    # Get SQLite information
+    sqlite_info = db.get_sqlite_info()
+    print(f"SQLite version: {sqlite_info['version']}")
+    print(f"Database size: {sqlite_info['database_size']} bytes")
+    print(f"Journal mode: {sqlite_info['journal_mode']}")
+    
+    # Configure custom pragma settings
+    db.configure_pragma('cache_size', '-128000')  # 128MB cache
+    db.configure_pragma('synchronous', 'NORMAL')   # Balance between speed and safety
     
     # Read operation
     users = db.fetch("SELECT * FROM users WHERE active = :active", 
@@ -507,7 +680,28 @@ if __name__ == "__main__":
     ]
     results = db.execute_transaction(operations)
     
+    # SQLite-specific maintenance operations
+    print("Running SQLite maintenance...")
+    
+    # Check database integrity
+    issues = db.integrity_check()
+    if issues:
+        print(f"Integrity issues found: {issues}")
+    else:
+        print("Database integrity check passed")
+    
+    # Update query planner statistics
+    db.analyze()
+    print("Query planner statistics updated")
+    
+    # Run optimization
+    db.optimize()
+    print("Database optimization completed")
+    
     # Performance stats
     print("Performance stats:", db.get_stats())
+    
+    # Optional: Run VACUUM for space reclamation (use sparingly)
+    # db.vacuum()  # Uncomment if needed
     
     db.shutdown()
