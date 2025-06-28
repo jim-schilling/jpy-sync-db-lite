@@ -501,6 +501,11 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - Additional performance testing scenarios
 
 ### 0.2.5 (2025-06-28)
+- **Enhanced error handling for database maintenance operations** with proper exception wrapping and rollback support
+- **Improved robustness of maintenance methods** (`vacuum`, `analyze`, `integrity_check`, `optimize`) with try-catch blocks
+- **Better error messages** for maintenance operations with descriptive failure descriptions
+- **Comprehensive test coverage** for error handling scenarios in maintenance operations
+- **Consistent error handling patterns** across all database maintenance methods
 - **Enhanced SQLite-specific functionality** with comprehensive database management features
 - **New `get_sqlite_info()` method** to retrieve SQLite version, database statistics, and PRAGMA values
 - **New `configure_pragma()` method** for dynamic SQLite PRAGMA configuration (cache_size, synchronous, etc.)

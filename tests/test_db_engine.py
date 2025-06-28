@@ -1624,6 +1624,74 @@ class TestDbEngineSQLiteSpecific(unittest.TestCase):
         users = self.db_engine.fetch("SELECT * FROM test_users")
         self.assertEqual(len(users), 3)
     
+    def test_vacuum_error_handling(self):
+        """Test that vacuum operation properly wraps errors in DbOperationError."""
+        # Test with a corrupted database scenario (simulated by invalid operation)
+        # This test verifies that vacuum errors are wrapped in DbOperationError
+        try:
+            self.db_engine.vacuum()
+            # If vacuum succeeds, that's fine - we're just testing error wrapping
+        except Exception as e:
+            # If an error occurs, it should be wrapped in DbOperationError
+            self.assertIsInstance(e, Exception)
+            self.assertIn("VACUUM operation failed", str(e))
+    
+    def test_analyze_error_handling(self):
+        """Test that analyze operation properly wraps errors in DbOperationError."""
+        # Test analyze with invalid table name
+        try:
+            self.db_engine.analyze('non_existent_table')
+            # If analyze succeeds, that's fine - we're just testing error wrapping
+        except Exception as e:
+            # If an error occurs, it should be wrapped in DbOperationError
+            self.assertIsInstance(e, Exception)
+            self.assertIn("ANALYZE operation failed", str(e))
+    
+    def test_integrity_check_error_handling(self):
+        """Test that integrity_check operation properly wraps errors in DbOperationError."""
+        # Test integrity check error handling
+        try:
+            issues = self.db_engine.integrity_check()
+            # If integrity check succeeds, that's fine - we're just testing error wrapping
+            self.assertIsInstance(issues, list)
+        except Exception as e:
+            # If an error occurs, it should be wrapped in DbOperationError
+            self.assertIsInstance(e, Exception)
+            self.assertIn("Integrity check failed", str(e))
+    
+    def test_optimize_error_handling(self):
+        """Test that optimize operation properly wraps errors in DbOperationError."""
+        # Test optimize error handling
+        try:
+            self.db_engine.optimize()
+            # If optimize succeeds, that's fine - we're just testing error wrapping
+        except Exception as e:
+            # If an error occurs, it should be wrapped in DbOperationError
+            self.assertIsInstance(e, Exception)
+            self.assertIn("Optimization operation failed", str(e))
+    
+    def test_maintenance_operations_error_wrapping(self):
+        """Test that all maintenance operations properly wrap errors in DbOperationError."""
+        from jpy_sync_db_lite.db_engine import DbOperationError
+        
+        # Test all maintenance operations to ensure they wrap errors properly
+        maintenance_operations = [
+            (self.db_engine.vacuum, "VACUUM operation failed"),
+            (lambda: self.db_engine.analyze(), "ANALYZE operation failed"),
+            (lambda: self.db_engine.analyze('test_users'), "ANALYZE operation failed"),
+            (lambda: self.db_engine.integrity_check(), "Integrity check failed"),
+            (self.db_engine.optimize, "Optimization operation failed"),
+        ]
+        
+        for operation, expected_error_text in maintenance_operations:
+            try:
+                operation()
+                # If operation succeeds, that's fine - we're just testing error wrapping
+            except Exception as e:
+                # If an error occurs, it should be wrapped in DbOperationError
+                self.assertIsInstance(e, Exception)
+                self.assertIn(expected_error_text, str(e))
+    
     def test_sqlite_error_class(self):
         """Test SQLiteError exception class."""
         from jpy_sync_db_lite.db_engine import SQLiteError

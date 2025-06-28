@@ -527,8 +527,12 @@ class DbEngine:
         """
         with self._db_engine_lock():
             with self.engine.connect() as conn:
-                conn.execute(text("VACUUM"))
-                conn.commit()
+                try:
+                    conn.execute(text("VACUUM"))
+                    conn.commit()
+                except Exception as e:
+                    conn.rollback()
+                    raise DbOperationError(f"VACUUM operation failed: {e}")
     
     def analyze(self, table_name: Optional[str] = None) -> None:
         """
@@ -539,11 +543,15 @@ class DbEngine:
         """
         with self._db_engine_lock():
             with self.engine.connect() as conn:
-                if table_name:
-                    conn.execute(text(f"ANALYZE {table_name}"))
-                else:
-                    conn.execute(text("ANALYZE"))
-                conn.commit()
+                try:
+                    if table_name:
+                        conn.execute(text(f"ANALYZE {table_name}"))
+                    else:
+                        conn.execute(text("ANALYZE"))
+                    conn.commit()
+                except Exception as e:
+                    conn.rollback()
+                    raise DbOperationError(f"ANALYZE operation failed: {e}")
     
     def integrity_check(self) -> List[str]:
         """
@@ -554,15 +562,18 @@ class DbEngine:
         """
         with self._db_engine_lock():
             with self.engine.connect() as conn:
-                result = conn.execute(text("PRAGMA integrity_check"))
-                rows = result.fetchall()
-                
-                issues = []
-                for row in rows:
-                    if row[0] != 'ok':
-                        issues.append(row[0])
-                
-                return issues
+                try:
+                    result = conn.execute(text("PRAGMA integrity_check"))
+                    rows = result.fetchall()
+                    
+                    issues = []
+                    for row in rows:
+                        if row[0] != 'ok':
+                            issues.append(row[0])
+                    
+                    return issues
+                except Exception as e:
+                    raise DbOperationError(f"Integrity check failed: {e}")
     
     def optimize(self) -> None:
         """
@@ -570,13 +581,17 @@ class DbEngine:
         """
         with self._db_engine_lock():
             with self.engine.connect() as conn:
-                # Run optimize pragma
-                conn.execute(text("PRAGMA optimize"))
-                
-                # Update statistics
-                conn.execute(text("ANALYZE"))
-                
-                conn.commit()
+                try:
+                    # Run optimize pragma
+                    conn.execute(text("PRAGMA optimize"))
+                    
+                    # Update statistics
+                    conn.execute(text("ANALYZE"))
+                    
+                    conn.commit()
+                except Exception as e:
+                    conn.rollback()
+                    raise DbOperationError(f"Optimization operation failed: {e}")
 
 
 # Usage examples
