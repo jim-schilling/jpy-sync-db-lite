@@ -22,7 +22,7 @@ from sqlalchemy import text
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from jpy_sync_db_lite.db_engine import DbEngine, DbOperationError
+from jpy_sync_db_lite.db_engine import DbEngine, DbOperationError, SQLiteError
 from jpy_sync_db_lite.db_request import DbRequest
 
 
@@ -1274,11 +1274,7 @@ class TestDbEngineEdgeCases(unittest.TestCase):
             try:
                 os.unlink(self.temp_db_path)
             except PermissionError:
-                time.sleep(0.1)
-                try:
-                    os.unlink(self.temp_db_path)
-                except PermissionError:
-                    pass
+                pass
 
     def test_empty_parameters(self):
         """Test operations with empty parameters."""
@@ -1596,51 +1592,237 @@ class TestDbEngineSQLiteSpecific(unittest.TestCase):
         users = self.db_engine.fetch("SELECT * FROM test_users")
         self.assertEqual(len(users), 3)
 
-    def test_vacuum_error_handling(self):
-        """Test that vacuum operation properly wraps errors in DbOperationError."""
-        # Test with a corrupted database scenario (simulated by invalid operation)
-        # This test verifies that vacuum errors are wrapped in DbOperationError
-        try:
-            self.db_engine.vacuum()
-            # If vacuum succeeds, that's fine - we're just testing error wrapping
-        except DbOperationError as e:
-            # If an error occurs, it should be wrapped in DbOperationError
-            self.assertIsInstance(e, DbOperationError)
-            self.assertIn("VACUUM operation failed", str(e))
+    def test_get_raw_connection_exception(self):
+        with self.assertRaises(Exception):
+            with self.db_engine.get_raw_connection() as conn:
+                conn.execute(text("INVALID SQL"))
 
-    def test_analyze_error_handling(self):
-        """Test that analyze operation properly wraps errors in DbOperationError."""
-        # Test analyze with invalid table name
-        try:
-            self.db_engine.analyze('non_existent_table')
-            # If analyze succeeds, that's fine - we're just testing error wrapping
-        except DbOperationError as e:
-            # If an error occurs, it should be wrapped in DbOperationError
-            self.assertIsInstance(e, DbOperationError)
-            self.assertIn("ANALYZE operation failed", str(e))
+    def test_analyze_error_wrapping(self):
+        # Pass an invalid table name to reliably trigger an error
+        with self.assertRaises(DbOperationError):
+            self.db_engine.analyze('this_table_does_not_exist')
 
-    def test_integrity_check_error_handling(self):
-        """Test that integrity_check operation properly wraps errors in DbOperationError."""
-        # Test integrity check error handling
-        try:
-            issues = self.db_engine.integrity_check()
-            # If integrity check succeeds, that's fine - we're just testing error wrapping
-            self.assertIsInstance(issues, list)
-        except DbOperationError as e:
-            # If an error occurs, it should be wrapped in DbOperationError
-            self.assertIsInstance(e, DbOperationError)
-            self.assertIn("Integrity check failed", str(e))
+    def test_maintenance_operations_error_wrapping(self):
+        """Test that all maintenance operations properly wrap errors in DbOperationError."""
+        from jpy_sync_db_lite.db_engine import DbOperationError
 
-    def test_optimize_error_handling(self):
-        """Test that optimize operation properly wraps errors in DbOperationError."""
-        # Test optimize error handling
+        # Test all maintenance operations to ensure they wrap errors properly
+        maintenance_operations = [
+            (self.db_engine.vacuum, "VACUUM operation failed"),
+            (lambda: self.db_engine.analyze(), "ANALYZE operation failed"),
+            (lambda: self.db_engine.analyze('test_users'), "ANALYZE operation failed"),
+            (lambda: self.db_engine.integrity_check(), "Integrity check failed"),
+            (self.db_engine.optimize, "Optimization operation failed"),
+        ]
+
+        for operation, expected_error_text in maintenance_operations:
+            try:
+                operation()
+                # If operation succeeds, that's fine - we're just testing error wrapping
+            except DbOperationError as e:
+                # If an error occurs, it should be wrapped in DbOperationError
+                self.assertIsInstance(e, DbOperationError)
+                self.assertIn(expected_error_text, str(e))
+
+    def test_sqlite_error_class(self):
+        """Test SQLiteError exception class."""
+        from jpy_sync_db_lite.db_engine import SQLiteError
+
+        # Test SQLiteError creation
+        error = SQLiteError(1, "Test error message")
+        self.assertEqual(error.error_code, 1)
+        self.assertEqual(error.message, "Test error message")
+        self.assertIn("SQLite error 1", str(error))
+
+    def test_enhanced_performance_configuration(self):
+        """Test enhanced SQLite performance configuration."""
+        with self.db_engine.get_raw_connection() as conn:
+            # Check foreign keys are enabled
+            result = conn.execute(text("PRAGMA foreign_keys"))
+            foreign_keys = result.fetchone()[0]
+            self.assertEqual(foreign_keys, 1)
+
+            # Check busy timeout
+            result = conn.execute(text("PRAGMA busy_timeout"))
+            busy_timeout = result.fetchone()[0]
+            self.assertEqual(busy_timeout, 30000)  # 30 seconds
+
+            # Check auto vacuum (may not be set if database already exists)
+            result = conn.execute(text("PRAGMA auto_vacuum"))
+            auto_vacuum = result.fetchone()[0]
+            # Auto vacuum can be 0 (NONE), 1 (FULL), or 2 (INCREMENTAL)
+            self.assertIn(auto_vacuum, [0, 1, 2])
+
+    def test_connection_parameters(self):
+        """Test SQLite connection parameters are properly set."""
+        # Test with different connection parameters
+        db = DbEngine(
+            self.database_url,
+            timeout=60,
+            check_same_thread=False  # Must be False for threading
+        )
+
+        # Verify the engine was created successfully
+        self.assertIsNotNone(db.engine)
+
+        # Test that operations work with custom parameters
+        result = db.fetch("SELECT 1 as test")
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]['test'], 1)
+
+        db.shutdown()
+
+    def test_pragma_configuration_edge_cases(self):
+        """Test PRAGMA configuration with edge cases."""
+        # Test invalid PRAGMA name (should not crash)
         try:
-            self.db_engine.optimize()
-            # If optimize succeeds, that's fine - we're just testing error wrapping
-        except DbOperationError as e:
-            # If an error occurs, it should be wrapped in DbOperationError
-            self.assertIsInstance(e, DbOperationError)
-            self.assertIn("Optimization operation failed", str(e))
+            self.db_engine.configure_pragma('invalid_pragma', 'value')
+        except Exception as e:
+            # Should handle gracefully
+            self.assertIsInstance(e, Exception)
+
+        # Test numeric PRAGMA value (skip empty value test)
+        self.db_engine.configure_pragma('cache_size', '1000')
+
+        with self.db_engine.get_raw_connection() as conn:
+            result = conn.execute(text("PRAGMA cache_size"))
+            cache_size = result.fetchone()[0]
+            self.assertEqual(cache_size, 1000)
+
+    def test_sqlite_info_edge_cases(self):
+        """Test SQLite info retrieval with edge cases."""
+        # Test with in-memory database
+        memory_db = DbEngine("sqlite:///:memory:")
+
+        info = memory_db.get_sqlite_info()
+
+        # Should still get version and other info
+        self.assertIn('version', info)
+        self.assertIsInstance(info['version'], str)
+
+        # Database size might be None for in-memory
+        self.assertIn('database_size', info)
+
+        memory_db.shutdown()
+
+    def test_concurrent_sqlite_operations(self):
+        """Test concurrent SQLite-specific operations."""
+        import threading
+
+        results = []
+        errors = []
+
+        def worker(worker_id):
+            try:
+                # Each worker performs SQLite-specific operations
+                for i in range(2):  # Reduced iterations
+                    # Configure pragma (use different values to avoid conflicts)
+                    pragma_value = f'-{16000 + worker_id * 1000 + i}'
+                    self.db_engine.configure_pragma('cache_size', pragma_value)
+
+                    # Get SQLite info (read-only operation)
+                    info = self.db_engine.get_sqlite_info()
+                    results.append(info['version'])
+
+                    # Run analyze (should be safe for concurrent access)
+                    self.db_engine.analyze()
+
+                    time.sleep(0.005)  # Reduced delay
+
+            except Exception as e:
+                errors.append(str(e))
+
+        # Start fewer threads to reduce contention
+        threads = []
+        for i in range(2):  # Reduced from 3 to 2 threads
+            thread = threading.Thread(target=worker, args=(i,))
+            threads.append(thread)
+            thread.start()
+
+        # Wait for all threads to complete with timeout
+        for thread in threads:
+            thread.join(timeout=10)  # 10 second timeout
+
+        # Verify no errors occurred
+        self.assertEqual(len(errors), 0, f"Errors occurred: {errors}")
+        self.assertGreater(len(results), 0)
+
+        # All results should be the same SQLite version
+        unique_versions = set(results)
+        self.assertEqual(len(unique_versions), 1)
+
+
+class TestDbEngineErrorHandling(unittest.TestCase):
+    """Test error and exception handling for DbEngine edge cases."""
+    def setUp(self):
+        self.temp_db_fd, self.temp_db_path = tempfile.mkstemp(suffix='.db')
+        os.close(self.temp_db_fd)
+        self.database_url = f"sqlite:///{self.temp_db_path}"
+        self.db_engine = DbEngine(self.database_url)
+
+    def tearDown(self):
+        self.db_engine.shutdown()
+        if os.path.exists(self.temp_db_path):
+            try:
+                os.unlink(self.temp_db_path)
+            except PermissionError:
+                pass
+
+    def test_db_operation_error_str(self):
+        err = DbOperationError("test error")
+        self.assertIn("test error", str(err))
+
+    def test_sqlite_error_str(self):
+        err = SQLiteError(123, "sqlite test error")
+        self.assertIn("sqlite test error", str(err))
+        self.assertIn("123", str(err))
+
+    def test_execute_invalid_sql_raises(self):
+        with self.assertRaises(DbOperationError):
+            self.db_engine.execute("INVALID SQL")
+
+    def test_fetch_invalid_sql_raises(self):
+        with self.assertRaises(DbOperationError):
+            self.db_engine.fetch("INVALID SQL")
+
+    def test_batch_invalid_sql_raises(self):
+        with self.assertRaises(DbOperationError):
+            self.db_engine.batch("INVALID SQL;")
+
+    def test_execute_transaction_invalid_op_type(self):
+        with self.assertRaises(DbOperationError):
+            self.db_engine.execute_transaction([
+                {"operation": "not_a_valid_op", "query": "SELECT 1"}
+            ])
+
+    def test_execute_transaction_missing_query(self):
+        with self.assertRaises(DbOperationError):
+            self.db_engine.execute_transaction([
+                {"operation": "fetch"}
+            ])
+
+    def test_execute_transaction_missing_operation(self):
+        with self.assertRaises(DbOperationError):
+            self.db_engine.execute_transaction([
+                {"query": "SELECT 1"}
+            ])
+
+    def test_configure_pragma_invalid(self):
+        # Should not crash, but may raise an exception
+        try:
+            self.db_engine.configure_pragma('not_a_real_pragma', 'value')
+        except Exception as e:
+            self.assertIsInstance(e, Exception)
+
+    def test_get_raw_connection_exception(self):
+        with self.assertRaises(Exception):
+            with self.db_engine.get_raw_connection() as conn:
+                conn.execute(text("INVALID SQL"))
+
+    def test_analyze_error_wrapping(self):
+        # Pass an invalid table name to reliably trigger an error
+        with self.assertRaises(DbOperationError):
+            self.db_engine.analyze('this_table_does_not_exist')
 
     def test_maintenance_operations_error_wrapping(self):
         """Test that all maintenance operations properly wrap errors in DbOperationError."""

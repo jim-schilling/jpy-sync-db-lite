@@ -520,16 +520,27 @@ class DbEngine:
             List of result dicts for each operation (with 'type', 'result', etc.)
 
         Raises:
-            DbOperationError: If the transaction fails
+            DbOperationError: If the transaction fails or an invalid operation type is provided
         """
         with self._db_engine_lock():
             with self.engine.connect() as conn:
                 results: list[dict[str, Any]] = []
                 try:
                     for operation in operations:
-                        op_type = operation.get("operation", _EXECUTE_STATEMENT)
+                        # Validate required keys
+                        if "query" not in operation:
+                            raise DbOperationError("Missing required key 'query' in operation")
+                        if "operation" not in operation:
+                            raise DbOperationError("Missing required key 'operation' in operation")
+                        
+                        op_type = operation["operation"]
                         query = operation["query"]
                         params = operation.get("params")
+                        
+                        # Validate operation type
+                        if op_type not in [_FETCH_STATEMENT, _EXECUTE_STATEMENT]:
+                            raise DbOperationError(f"Invalid operation type: {op_type}. Must be 'fetch' or 'execute'")
+                        
                         try:
                             if op_type == _FETCH_STATEMENT:
                                 result = conn.execute(text(query), params or {})
