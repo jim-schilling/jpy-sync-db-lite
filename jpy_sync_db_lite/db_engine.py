@@ -401,10 +401,9 @@ class DbEngine:
 
         # Wait for all worker threads to complete
         for worker in self.workers:
-            worker.join(timeout=5)  # 5 second timeout per worker
+            worker.join(timeout=7)  # 7 second timeout per worker
             if worker.is_alive():
-                logging.warning(f"Worker thread {worker.name} did not complete within 5 seconds. Forcing shutdown.")
-                worker.terminate()
+                logging.warning(f"Worker thread {worker.name} did not complete within 7 seconds.")                
 
         # Close the engine
         self.engine.dispose()
