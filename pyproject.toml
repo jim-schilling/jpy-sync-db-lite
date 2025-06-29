@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools>=68.0", "wheel", "setuptools-scm[toml]>=8.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "jpy-sync-db-lite"
-version = "0.2.6"
+version = "0.2.7"
 description = "Jim's Python - Synchronous Database Wrapper for SQLite"
 readme = "README.md"
 license = "MIT"
@@ -14,7 +14,7 @@ authors = [
 maintainers = [
     {name = "Jim Schilling"}
 ]
-keywords = ["sqlite", "database", "synchronous", "threading", "sqlalchemy"]
+keywords = ["sqlite", "database", "synchronous", "threading", "sqlalchemy", "orm"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -23,19 +23,50 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: Implementation :: CPython",
     "Topic :: Database",
+    "Topic :: Database :: Database Engines/Servers",
     "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+    "Typing :: Typed",
 ]
 requires-python = ">=3.10"
 dependencies = [
-    "sqlalchemy>=2.0.37",
-    "sqlparse>=0.4.0",
+    "sqlalchemy>=2.0.37,<3.0",
+    "sqlparse>=0.4.0,<1.0",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=7.0.0",
-    "pytest-cov>=4.0.0",
+    "pytest>=7.4.0,<8.0",
+    "pytest-cov>=4.1.0,<5.0",
+    "pytest-mock>=3.11.0,<4.0",
+    "pytest-xdist>=3.3.0,<4.0",
+    "coverage[toml]>=7.3.0,<8.0",
+    "mypy>=1.5.0,<2.0",
+    "ruff>=0.1.0,<1.0",
+    "black>=23.0.0,<24.0",
+    "isort>=5.12.0,<6.0",
+    "bandit[toml]>=1.7.0,<2.0",
+    "pre-commit>=3.4.0,<4.0",
+    "types-setuptools>=68.0.0,<69.0",
+]
+test = [
+    "pytest>=7.4.0,<8.0",
+    "pytest-cov>=4.1.0,<5.0",
+    "pytest-mock>=3.11.0,<4.0",
+    "pytest-xdist>=3.3.0,<4.0",
+    "coverage[toml]>=7.3.0,<8.0",
+]
+lint = [
+    "ruff>=0.1.0,<1.0",
+    "black>=23.0.0,<24.0",
+    "isort>=5.12.0,<6.0",
+    "bandit[toml]>=1.7.0,<2.0",
+]
+type = [
+    "mypy>=1.5.0,<2.0",
+    "types-setuptools>=68.0.0,<69.0",
 ]
 
 [project.urls]
@@ -43,16 +74,94 @@ Homepage = "https://github.com/jimschilling/jpy-sync-db-lite"
 Repository = "https://github.com/jimschilling/jpy-sync-db-lite.git"
 Documentation = "https://github.com/jimschilling/jpy-sync-db-lite#readme"
 "Bug Tracker" = "https://github.com/jimschilling/jpy-sync-db-lite/issues"
+"Changelog" = "https://github.com/jimschilling/jpy-sync-db-lite/blob/main/CHANGELOG.md"
 
 [project.scripts]
 jpy-sync-db-lite = "jpy_sync_db_lite.__main__:main"
 
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["jpy_sync_db_lite*"]
+[tool.setuptools]
+packages = ["jpy_sync_db_lite"]
 
 [tool.setuptools.package-data]
 "jpy_sync_db_lite" = ["*.pyi", "py.typed"]
+
+[tool.setuptools-scm]
+write_to = "jpy_sync_db_lite/_version.py"
+version_scheme = "python-simplified-semver"
+local_scheme = "node-and-timestamp"
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_equality = true
+show_error_codes = true
+
+[[tool.mypy.overrides]]
+module = [
+    "sqlalchemy.*",
+    "sqlparse.*",
+]
+ignore_missing_imports = true
+
+[tool.ruff]
+target-version = "py310"
+line-length = 88
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "C4", # flake8-comprehensions
+    "UP", # pyupgrade
+]
+ignore = [
+    "E501",  # line too long, handled by black
+    "B008",  # do not perform function calls in argument defaults
+    "C901",  # too complex
+]
+
+[tool.ruff.per-file-ignores]
+"__init__.py" = ["F401"]
+"tests/**/*" = ["B011"]
+
+[tool.black]
+target-version = ['py310']
+line-length = 88
+include = '\\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \\.eggs
+  | \\.git
+  | \\.hg
+  | \\.mypy_cache
+  | \\.tox
+  | \\.venv
+  | build
+  | dist
+)/
+'''
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+line_length = 88
+known_first_party = ["jpy_sync_db_lite"]
+
+[tool.bandit]
+exclude_dirs = ["tests", "venv", ".venv", "env", ".env"]
+skips = ["B101", "B601"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -65,10 +174,20 @@ addopts = [
     "--cov=jpy_sync_db_lite",
     "--cov-report=term-missing",
     "--cov-report=html",
+    "--cov-report=xml",
+    "--cov-fail-under=80",
+    "--durations=10",
+    "--tb=short",
+    "-x",  # stop on first failure
 ]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
 ]
 
 [tool.coverage.run]
@@ -79,6 +198,16 @@ omit = [
     "*/__pycache__/*",
     "*/venv/*",
     "*/env/*",
+    "*/\\.venv/*",
+    "*/\\.env/*",
+    "*/build/*",
+    "*/dist/*",
+    "*/\\.eggs/*",
+    "*/\\.mypy_cache/*",
+    "*/\\.tox/*",
+    "*/\\.git/*",
+    "*/\\.hg/*",
+    "*/_version.py",
 ]
 
 [tool.coverage.report]
@@ -93,4 +222,12 @@ exclude_lines = [
     "if __name__ == .__main__.:",
     "class .*\\bProtocol\\):",
     "@(abc\\.)?abstractmethod",
-] 
+    "typing.TYPE_CHECKING",
+    "from __future__ import",
+]
+
+[tool.coverage.html]
+directory = "htmlcov"
+
+[tool.coverage.xml]
+output = "coverage.xml" 

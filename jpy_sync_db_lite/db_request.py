@@ -8,16 +8,16 @@ Please keep this header when you use this code.
 This module is licensed under the MIT License.
 """
 import queue
-from dataclasses import dataclass, field
-from typing import Any, Optional, Dict, List, Union
 import time
+from dataclasses import dataclass, field
+from typing import Any
+
 
 @dataclass
 class DbRequest:
     operation: str
-    query: Union[str, Any]
-    params: Optional[Union[Dict, List[Dict]]] = None
-    response_queue: Optional[queue.Queue] = None
+    query: str | Any
+    params: dict | list[dict] | None = None
+    response_queue: queue.Queue | None = None
     timestamp: float = field(default_factory=time.time)
-    batch_id: Optional[str] = None
-
+    batch_id: str | None = None

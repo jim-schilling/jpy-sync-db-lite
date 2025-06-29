@@ -306,9 +306,9 @@ batch_sql = """
 results = db.batch(batch_sql)
 
 # Process results
-for result in results:
-    print(f"Statement {result['statement_index']}: {result['type']} - {result.get('row_count', 'N/A')} rows")
-    if result['type'] == 'fetch':
+for i, result in enumerate(results):
+    print(f"Statement {i}: {result['operation']} - {result.get('row_count', 'N/A')} rows")
+    if result['operation'] == 'fetch':
         print(f"  Data: {result['result']}")
 ```
 
@@ -318,9 +318,8 @@ for result in results:
 
 **Returns:**
 List of dictionaries containing results for each statement:
-- `statement_index`: Index of the statement in the batch
 - `statement`: The actual SQL statement executed
-- `type`: 'fetch', 'execute', or 'error'
+- `operation`: 'fetch', 'execute', or 'error'
 - `result`: Query results (for SELECT) or True (for other operations)
 - `row_count`: Number of rows affected/returned
 - `error`: Error message (only for failed statements)
@@ -387,7 +386,7 @@ python -m unittest tests.test_db_engine_performance -v
 - **Expected**: >50 ops/sec, <100ms average latency
 
 #### 2. Bulk Insert Performance
-- Tests different batch sizes (10, 50, 100, 500, 1000 records)
+- Tests different batch sizes (10, 50, 100, 250 records)
 - Measures throughput and per-record latency
 - **Expected**: >100 ops/sec for optimal batch sizes
 
@@ -499,6 +498,16 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - Performance improvements and optimizations
 - Enhanced error handling and logging
 - Additional performance testing scenarios
+
+### 0.2.7 (2025-06-29)
+- **Enhanced project configuration** with updated setuptools and setuptools-scm for better version management
+- **Improved dependency management** with specific version constraints for all development and testing dependencies
+- **Enhanced development tooling** with comprehensive linting, formatting, and type checking configurations (ruff, black, isort, mypy, bandit)
+- **Better test infrastructure** with enhanced pytest configuration, coverage reporting, and test categorization
+- **Documentation improvements** with updated API examples and corrected return type documentation for batch operations
+- **Code quality enhancements** with improved logging and error handling in SQLite operations
+- **Enhanced test coverage** for performance and integration scenarios with robust validation of new features
+- **Project metadata improvements** with additional classifiers, keywords, and better package discovery
 
 ### 0.2.6 (2025-06-29)
 - **Enhanced input validation for `split_sql_file()` function** with proper handling of invalid path types
