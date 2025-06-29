@@ -306,9 +306,9 @@ batch_sql = """
 results = db.batch(batch_sql)
 
 # Process results
-for result in results:
-    print(f"Statement {result['statement_index']}: {result['type']} - {result.get('row_count', 'N/A')} rows")
-    if result['type'] == 'fetch':
+for i, result in enumerate(results):
+    print(f"Statement {i}: {result['operation']} - {result.get('row_count', 'N/A')} rows")
+    if result['operation'] == 'fetch':
         print(f"  Data: {result['result']}")
 ```
 
@@ -318,9 +318,8 @@ for result in results:
 
 **Returns:**
 List of dictionaries containing results for each statement:
-- `statement_index`: Index of the statement in the batch
 - `statement`: The actual SQL statement executed
-- `type`: 'fetch', 'execute', or 'error'
+- `operation`: 'fetch', 'execute', or 'error'
 - `result`: Query results (for SELECT) or True (for other operations)
 - `row_count`: Number of rows affected/returned
 - `error`: Error message (only for failed statements)
@@ -499,6 +498,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - Performance improvements and optimizations
 - Enhanced error handling and logging
 - Additional performance testing scenarios
+
+### 0.2.7 (2025-06-29)
 
 ### 0.2.6 (2025-06-29)
 - **Enhanced input validation for `split_sql_file()` function** with proper handling of invalid path types
