@@ -500,6 +500,14 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - Additional performance testing scenarios
 
 ### 0.2.7 (2025-06-29)
+- **Enhanced project configuration** with updated setuptools and setuptools-scm for better version management
+- **Improved dependency management** with specific version constraints for all development and testing dependencies
+- **Enhanced development tooling** with comprehensive linting, formatting, and type checking configurations (ruff, black, isort, mypy, bandit)
+- **Better test infrastructure** with enhanced pytest configuration, coverage reporting, and test categorization
+- **Documentation improvements** with updated API examples and corrected return type documentation for batch operations
+- **Code quality enhancements** with improved logging and error handling in SQLite operations
+- **Enhanced test coverage** for performance and integration scenarios with robust validation of new features
+- **Project metadata improvements** with additional classifiers, keywords, and better package discovery
 
 ### 0.2.6 (2025-06-29)
 - **Enhanced input validation for `split_sql_file()` function** with proper handling of invalid path types
