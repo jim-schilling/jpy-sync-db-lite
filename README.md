@@ -386,7 +386,7 @@ python -m unittest tests.test_db_engine_performance -v
 - **Expected**: >50 ops/sec, <100ms average latency
 
 #### 2. Bulk Insert Performance
-- Tests different batch sizes (10, 50, 100, 500, 1000 records)
+- Tests different batch sizes (10, 50, 100, 250 records)
 - Measures throughput and per-record latency
 - **Expected**: >100 ops/sec for optimal batch sizes
 
