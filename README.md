@@ -500,6 +500,14 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - Enhanced error handling and logging
 - Additional performance testing scenarios
 
+### 0.2.6 (2025-06-29)
+- **Enhanced input validation for `split_sql_file()` function** with proper handling of invalid path types
+- **Improved error handling** for `None`, empty strings, and non-string/non-Path objects in file path parameters
+- **Better type safety** with explicit validation of file path parameters before processing
+- **Consistent error messaging** with descriptive ValueError messages for invalid inputs
+- **Enhanced robustness** of SQL file processing with comprehensive input validation
+- **Test coverage improvements** with edge case testing for invalid file path scenarios
+
 ### 0.2.5 (2025-06-28)
 - **Enhanced error handling for database maintenance operations** with proper exception wrapping and rollback support
 - **Improved robustness of maintenance methods** (`vacuum`, `analyze`, `integrity_check`, `optimize`) with try-catch blocks
