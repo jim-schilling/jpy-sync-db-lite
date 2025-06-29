@@ -264,6 +264,7 @@ class DbEngine:
     ) -> list[dict[str, Any]]:
         """
         Execute a batch of SQL statements and return results for each.
+        This method raises an exception if any statement fails.
 
         Args:
             conn: Database connection
