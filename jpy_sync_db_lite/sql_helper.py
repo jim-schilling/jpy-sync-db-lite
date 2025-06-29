@@ -7,9 +7,11 @@ Please keep this header when you use this code.
 
 This module is licensed under the MIT License.
 """
-from typing import List, Optional, Tuple, Any
+from pathlib import Path
+from typing import List, Optional, Tuple, Union
 import sqlparse
-from sqlparse.tokens import Comment, Keyword, DML
+from sqlparse.tokens import Comment, DML
+from sqlparse.sql import Statement, Token
 
 
 # Private constants for SQL statement types
@@ -30,6 +32,7 @@ _PAREN_CLOSE = ')'
 # Public constants for statement type return values
 EXECUTE_STATEMENT = 'execute'
 FETCH_STATEMENT = 'fetch'
+ERROR_STATEMENT = 'error'
 
 
 def remove_sql_comments(sql_text: str) -> str:
@@ -99,7 +102,7 @@ def _is_dml_statement(statement_type: str) -> bool:
     return statement_type in _DML_STATEMENT_TYPES
 
 
-def _find_first_dml_keyword_top_level(tokens: List[Any]) -> Optional[str]:
+def _find_first_dml_keyword_top_level(tokens: List[Token]) -> Optional[str]:
     """
     Find first DML/Keyword at the top level after WITH (do not recurse into groups).
     
@@ -131,7 +134,7 @@ def _find_first_dml_keyword_top_level(tokens: List[Any]) -> Optional[str]:
     return None
 
 
-def _find_main_statement_after_ctes(tokens: List[Any]) -> Optional[str]:
+def _find_main_statement_after_ctes(tokens: List[Token]) -> Optional[str]:
     """
     Find the main statement after CTE definitions by looking for the first DML after all CTE groups.
     
@@ -201,7 +204,7 @@ def _find_main_statement_after_ctes(tokens: List[Any]) -> Optional[str]:
     return None
 
 
-def _next_non_ws_comment_token(tokens: List[Any], start: int = 0) -> Tuple[Optional[int], Optional[Any]]:
+def _next_non_ws_comment_token(tokens: List[Token], start: int = 0) -> Tuple[Optional[int], Optional[Token]]:
     """
     Find the next non-whitespace, non-comment token.
     
@@ -228,7 +231,7 @@ def _next_non_ws_comment_token(tokens: List[Any], start: int = 0) -> Tuple[Optio
     return None, None
 
 
-def _is_with_keyword(token: Any) -> bool:
+def _is_with_keyword(token: Token) -> bool:
     """
     Check if a token represents the 'WITH' keyword.
     
@@ -245,7 +248,7 @@ def _is_with_keyword(token: Any) -> bool:
             token.value.strip().upper() == _WITH_KEYWORD)
 
 
-def _find_with_keyword_index(tokens: List[Any]) -> Optional[int]:
+def _find_with_keyword_index(tokens: List[Token]) -> Optional[int]:
     """
     Find the index of the 'WITH' keyword in a list of tokens.
     
@@ -264,7 +267,7 @@ def _find_with_keyword_index(tokens: List[Any]) -> Optional[int]:
     return None
 
 
-def _extract_tokens_after_with(stmt: Any) -> List[Any]:
+def _extract_tokens_after_with(stmt: Statement) -> List[Token]:
     """
     Extract tokens that come after the WITH keyword in a CTE statement.
     
@@ -411,7 +414,7 @@ def parse_sql_statements(sql_text: str, strip_semicolon: bool = False) -> List[s
     return filtered_stmts
 
 
-def split_sql_file(file_path: str, strip_semicolon: bool = False) -> List[str]:
+def split_sql_file(file_path: Union[str, Path], strip_semicolon: bool = False) -> List[str]:
     """
     Read a SQL file and split it into individual statements.
     
@@ -427,11 +430,14 @@ def split_sql_file(file_path: str, strip_semicolon: bool = False) -> List[str]:
         OSError: If there's an error reading the file
         ValueError: If file_path is empty or invalid
     """
+    if file_path is None:
+        raise ValueError("file_path cannot be None")
+    
+    if not isinstance(file_path, (str, Path)):
+        raise ValueError("file_path must be a string or Path object")
+    
     if not file_path:
         raise ValueError("file_path cannot be empty")
-    
-    if not isinstance(file_path, str):
-        raise ValueError("file_path must be a string")
     
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
