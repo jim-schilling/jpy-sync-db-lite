@@ -326,7 +326,7 @@ class DbEngine:
         return results
 
     @contextmanager
-    def _db_engine_lock(self) -> Generator[None, None, None]:
+    def _acquire_db_lock(self) -> Generator[None, None, None]:
         """
         Context manager for acquiring the database engine lock.
         This ensures thread safety by preventing concurrent database operations.
