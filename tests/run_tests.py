@@ -1,61 +1,214 @@
 #!/usr/bin/env python3
 """
-Test runner for jpy-sync-db-lite.
+Test runner for jpy-sync-db-lite with conditional execution.
 
-Copyright (c) 2025, Jim Schilling
+This script allows you to run different categories of tests based on your needs.
 
-Please keep this header when you use this code.
+Usage:
+    python tests/run_tests.py [options]
 
-This module is licensed under the MIT License.
+Options:
+    --fast, -f          Run only fast unit tests (default)
+    --full, -a          Run all tests
+    --core, -c          Run core functionality tests only
+    --batch, -b         Run batch operation tests
+    --edge, -e          Run edge case tests
+    --sqlite, -s        Run SQLite-specific tests
+    --coverage, -v      Run coverage tests
+    --performance, -p   Run performance tests
+    --stress, -t        Run stress tests (concurrent client validation)
+    --integration, -i   Run integration tests
+    --slow, -l          Run slow tests
+    --sql-helper, -h    Run SQL helper tests only
+    --help, -h          Show this help message
+
+Examples:
+    python tests/run_tests.py --fast          # Run only fast unit tests
+    python tests/run_tests.py --core          # Run core functionality tests
+    python tests/run_tests.py --batch --edge  # Run batch and edge case tests
+    python tests/run_tests.py --stress        # Run stress tests for concurrent clients
+    python tests/run_tests.py --full          # Run all tests
+    python tests/run_tests.py --sql-helper    # Run SQL helper tests only
 """
+
+import argparse
 import os
 import sys
+import subprocess
 import time
-import unittest
+from pathlib import Path
 
-# Add parent directory to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-def run_tests():
-    """Run all tests with detailed output."""
-    print("=" * 60)
-    print("Running jpy-sync-db-lite Tests")
-    print("=" * 60)
-
-    # Discover and run tests
-    loader = unittest.TestLoader()
-    start_dir = os.path.dirname(__file__)
-    suite = loader.discover(start_dir, pattern='test_*.py')
-
-    # Run tests with verbose output
-    runner = unittest.TextTestRunner(verbosity=2, stream=sys.stdout)
+def run_tests(test_files, markers=None, verbose=True, coverage=True):
+    """Run tests using pytest."""
+    cmd = [sys.executable, "-m", "pytest"]
+    
+    if verbose:
+        cmd.append("-v")
+    
+    # Add markers if specified
+    if markers:
+        for marker in markers:
+            cmd.extend(["-m", marker])
+    
+    # Add test files
+    cmd.extend(test_files)
+    
+    # Add coverage options if requested
+    if coverage:
+        cmd.extend([
+            "--cov=jpy_sync_db_lite",
+            "--cov-report=term-missing",
+            "--cov-report=html",
+            "--cov-fail-under=80"
+        ])
+    
+    if verbose:
+        print(f"Running command: {' '.join(cmd)}")
+        print("-" * 80)
+    
     start_time = time.time()
-    result = runner.run(suite)
+    result = subprocess.run(cmd, cwd=Path(__file__).parent.parent)
     end_time = time.time()
-
-    # Print summary
-    print("\n" + "=" * 60)
-    print("Test Summary")
-    print("=" * 60)
-    print(f"Tests run: {result.testsRun}")
-    print(f"Failures: {len(result.failures)}")
-    print(f"Errors: {len(result.errors)}")
-    print(f"Skipped: {len(result.skipped) if hasattr(result, 'skipped') else 0}")
-    print(f"Time taken: {end_time - start_time:.2f} seconds")
-
-    if result.failures:
-        print("\nFailures:")
-        for test, traceback in result.failures:
-            print(f"  {test}: {traceback}")
-
-    if result.errors:
-        print("\nErrors:")
-        for test, traceback in result.errors:
-            print(f"  {test}: {traceback}")
-
-    return result.wasSuccessful()
+    
+    if verbose:
+        print("-" * 80)
+        print(f"Tests completed in {end_time - start_time:.2f} seconds")
+    
+    return result.returncode
 
 
-if __name__ == '__main__':
-    success = run_tests()
-    sys.exit(0 if success else 1)
+def main():
+    """Main function."""
+    parser = argparse.ArgumentParser(
+        description="Test runner for jpy-sync-db-lite",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=__doc__
+    )
+    
+    # Test category options
+    parser.add_argument("--fast", "-f", action="store_true", 
+                       help="Run only fast unit tests (default)")
+    parser.add_argument("--full", "-a", action="store_true", 
+                       help="Run all tests")
+    parser.add_argument("--core", "-c", action="store_true", 
+                       help="Run core functionality tests only")
+    parser.add_argument("--batch", "-b", action="store_true", 
+                       help="Run batch operation tests")
+    parser.add_argument("--edge", "-e", action="store_true", 
+                       help="Run edge case tests")
+    parser.add_argument("--sqlite", "-s", action="store_true", 
+                       help="Run SQLite-specific tests")
+    parser.add_argument("--coverage", action="store_true", 
+                       help="Run coverage tests")
+    parser.add_argument("--performance", "-p", action="store_true", 
+                       help="Run performance tests")
+    parser.add_argument("--stress", "-t", action="store_true", 
+                       help="Run stress tests (concurrent client validation)")
+    parser.add_argument("--integration", "-i", action="store_true", 
+                       help="Run integration tests")
+    parser.add_argument("--slow", "-l", action="store_true", 
+                       help="Run slow tests")
+    parser.add_argument("--sql-helper", action="store_true", 
+                       help="Run SQL helper tests only")
+    
+    # Other options
+    parser.add_argument("--verbose", "-v", action="store_true", 
+                       help="Run tests with verbose output")
+    parser.add_argument("--quiet", "-q", action="store_true", 
+                       help="Run tests quietly (less output)")
+    parser.add_argument("--no-coverage", action="store_true", 
+                       help="Disable coverage reporting")
+    
+    args = parser.parse_args()
+    
+    # Determine which tests to run
+    test_files = []
+    markers = []
+    
+    if args.full:
+        # Run all test files
+        test_files = [
+            "tests/test_db_engine.py",
+            "tests/test_db_engine_core.py",
+            "tests/test_db_engine_batch.py",
+            "tests/test_db_engine_edge_cases.py",
+            "tests/test_db_engine_sqlite.py",
+            "tests/test_db_engine_coverage.py",
+            "tests/test_sql_helper.py",
+            "tests/test_db_engine_performance.py",
+            "tests/test_db_engine_stress.py"
+        ]
+    elif args.core:
+        test_files = ["tests/test_db_engine.py"]
+        markers = ["unit"]
+    elif args.batch:
+        test_files = ["tests/test_db_engine_batch.py"]
+    elif args.edge:
+        test_files = ["tests/test_db_engine_edge_cases.py"]
+    elif args.sqlite:
+        test_files = ["tests/test_db_engine_sqlite.py"]
+    elif args.coverage:
+        test_files = ["tests/test_db_engine_coverage.py"]
+    elif args.performance:
+        test_files = ["tests/test_db_engine_performance.py"]
+        markers = ["performance"]
+    elif args.stress:
+        test_files = ["tests/test_db_engine_stress.py"]
+        markers = ["performance"]
+    elif args.sql_helper:
+        test_files = ["tests/test_sql_helper.py"]
+    elif args.integration:
+        markers = ["integration"]
+        test_files = [
+            "tests/test_db_engine.py",
+            "tests/test_db_engine_core.py",
+            "tests/test_db_engine_batch.py",
+            "tests/test_db_engine_sqlite.py",
+            "tests/test_sql_helper.py"
+        ]
+    elif args.slow:
+        markers = ["slow"]
+        test_files = [
+            "tests/test_db_engine.py",
+            "tests/test_db_engine_core.py",
+            "tests/test_db_engine_batch.py",
+            "tests/test_db_engine_performance.py",
+            "tests/test_db_engine_stress.py"
+        ]
+    else:
+        # Default: fast unit tests
+        test_files = ["tests/test_db_engine.py"]
+        markers = ["unit"]
+    
+    # Filter out non-existent test files
+    existing_files = []
+    for test_file in test_files:
+        if os.path.exists(test_file):
+            existing_files.append(test_file)
+        else:
+            if not args.quiet:
+                print(f"Warning: Test file {test_file} not found, skipping...")
+    
+    if not existing_files:
+        print("Error: No test files found to run!")
+        return 1
+    
+    # Determine verbosity
+    verbose = args.verbose or not args.quiet
+    
+    if verbose:
+        print(f"Running tests: {', '.join(existing_files)}")
+        if markers:
+            print(f"With markers: {', '.join(markers)}")
+        print()
+    
+    # Determine if coverage should be enabled
+    coverage_enabled = not args.no_coverage
+    
+    # Run the tests
+    return run_tests(existing_files, markers, verbose=verbose, coverage=coverage_enabled)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

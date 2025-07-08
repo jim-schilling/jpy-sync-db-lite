@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "jpy-sync-db-lite"
-version = "0.2.7"
+version = "0.3.0"
 description = "Jim's Python - Synchronous Database Wrapper for SQLite"
 readme = "README.md"
 license = "MIT"
@@ -70,11 +70,11 @@ type = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/jimschilling/jpy-sync-db-lite"
-Repository = "https://github.com/jimschilling/jpy-sync-db-lite.git"
-Documentation = "https://github.com/jimschilling/jpy-sync-db-lite#readme"
-"Bug Tracker" = "https://github.com/jimschilling/jpy-sync-db-lite/issues"
-"Changelog" = "https://github.com/jimschilling/jpy-sync-db-lite/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/jim-schilling/jpy-sync-db-lite"
+Repository = "https://github.com/jim-schilling/jpy-sync-db-lite.git"
+Documentation = "https://github.com/jim-schilling/jpy-sync-db-lite#readme"
+"Bug Tracker" = "https://github.com/jim-schilling/jpy-sync-db-lite/issues"
+"Changelog" = "https://github.com/jim-schilling/jpy-sync-db-lite/blob/main/CHANGELOG.md"
 
 [project.scripts]
 jpy-sync-db-lite = "jpy_sync_db_lite.__main__:main"
@@ -184,6 +184,7 @@ markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "integration: marks tests as integration tests",
     "unit: marks tests as unit tests",
+    "performance: marks tests as performance tests",
 ]
 filterwarnings = [
     "ignore::DeprecationWarning",
