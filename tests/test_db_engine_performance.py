@@ -81,12 +81,7 @@ class TestDbEnginePerformance(unittest.TestCase):
             }
         else:
             return {'rss_mb': 0.0, 'vms_mb': 0.0}
-
-    def _print_performance_summary(self, test_name: str, results: dict[str, Any]):
-        """Print a formatted performance summary."""
-        # Performance summary printing removed for cleaner test output
-        pass
-
+    
     def test_single_insert_performance(self) -> None:
         """Test single insert performance."""
         num_operations = 100
