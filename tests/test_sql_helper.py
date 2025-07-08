@@ -7,10 +7,11 @@ Please keep this header when you use this code.
 
 This module is licensed under the MIT License.
 """
+
 import os
 import tempfile
 import unittest
-
+import time
 from jpy_sync_db_lite.sql_helper import (
     detect_statement_type,
     parse_sql_statements,
@@ -18,10 +19,10 @@ from jpy_sync_db_lite.sql_helper import (
     split_sql_file,
 )
 
-
 class TestSqlHelper(unittest.TestCase):
+    """Unit tests for SQL helper functions."""
 
-    def test_remove_sql_comments_single_line(self):
+    def test_remove_sql_comments_single_line(self) -> None:
         """Test removing single-line comments."""
         sql = """
         SELECT * FROM users; -- This is a comment
@@ -32,7 +33,7 @@ class TestSqlHelper(unittest.TestCase):
         self.assertIn('SELECT * FROM users;', clean_sql)
         self.assertIn('INSERT INTO users VALUES (1, \'John\');', clean_sql)
 
-    def test_remove_sql_comments_multi_line(self):
+    def test_remove_sql_comments_multi_line(self) -> None:
         """Test removing multi-line comments."""
         sql = """
         CREATE TABLE users (
@@ -46,7 +47,7 @@ class TestSqlHelper(unittest.TestCase):
         self.assertNotIn('*/', clean_sql)
         self.assertIn('CREATE TABLE users', clean_sql)
 
-    def test_remove_sql_comments_preserve_strings(self):
+    def test_remove_sql_comments_preserve_strings(self) -> None:
         """Test that comments within string literals are preserved."""
         sql = """
         INSERT INTO users VALUES (1, 'John -- This is not a comment');
@@ -56,7 +57,7 @@ class TestSqlHelper(unittest.TestCase):
         self.assertIn("'John -- This is not a comment'", clean_sql)
         self.assertIn("'Jane /* This is not a comment */'", clean_sql)
 
-    def test_parse_sql_statements_simple(self):
+    def test_parse_sql_statements_simple(self) -> None:
         """Test parsing simple SQL statements."""
         sql = """
         CREATE TABLE users (id INTEGER PRIMARY KEY);
@@ -69,7 +70,7 @@ class TestSqlHelper(unittest.TestCase):
         self.assertIn('INSERT INTO users VALUES (1, \'John\');', statements)
         self.assertIn('SELECT * FROM users;', statements)
 
-    def test_parse_sql_statements_with_comments(self):
+    def test_parse_sql_statements_with_comments(self) -> None:
         """Test parsing SQL statements with comments."""
         sql = """
         CREATE TABLE users (id INTEGER PRIMARY KEY); -- Create table
@@ -78,14 +79,13 @@ class TestSqlHelper(unittest.TestCase):
         """
         statements = parse_sql_statements(sql)
         self.assertEqual(len(statements), 3)
-        # Comments should be removed
         for stmt in statements:
             self.assertNotIn('--', stmt)
             self.assertNotIn('/*', stmt)
             self.assertNotIn('*/', stmt)
             self.assertTrue(stmt.endswith(';'))
 
-    def test_parse_sql_statements_preserve_semicolons_in_strings(self):
+    def test_parse_sql_statements_preserve_semicolons_in_strings(self) -> None:
         """Test that semicolons in string literals are preserved."""
         sql = """
         INSERT INTO users VALUES (1, 'John; Doe');
@@ -98,30 +98,25 @@ class TestSqlHelper(unittest.TestCase):
         self.assertTrue(statements[0].endswith(';'))
         self.assertTrue(statements[1].endswith(';'))
 
-    def test_parse_sql_statements_empty(self):
+    def test_parse_sql_statements_empty(self) -> None:
         """Test parsing empty SQL."""
         statements = parse_sql_statements("")
         self.assertEqual(statements, [])
-
         statements = parse_sql_statements("   ")
         self.assertEqual(statements, [])
-
         statements = parse_sql_statements("-- Only comments\n/* More comments */")
         self.assertEqual(statements, [])
 
-    def test_split_sql_file(self):
+    def test_split_sql_file(self) -> None:
         """Test reading and parsing a SQL file."""
-        # Create a temporary SQL file
         sql_content = """
         CREATE TABLE users (id INTEGER PRIMARY KEY);
         INSERT INTO users VALUES (1, 'John');
         SELECT * FROM users;
         """
-
         with tempfile.NamedTemporaryFile(mode='w', suffix='.sql', delete=False) as f:
             f.write(sql_content)
             temp_file = f.name
-
         try:
             statements = split_sql_file(temp_file)
             self.assertEqual(len(statements), 3)
@@ -129,12 +124,12 @@ class TestSqlHelper(unittest.TestCase):
         finally:
             os.unlink(temp_file)
 
-    def test_split_sql_file_not_found(self):
+    def test_split_sql_file_not_found(self) -> None:
         """Test handling of non-existent file."""
         with self.assertRaises(FileNotFoundError):
             split_sql_file("non_existent_file.sql")
 
-    def test_complex_sql_parsing(self):
+    def test_complex_sql_parsing(self) -> None:
         """Test parsing complex SQL with mixed content."""
         complex_sql = """
         -- Create users table
@@ -155,23 +150,18 @@ class TestSqlHelper(unittest.TestCase):
         -- Query to verify
         SELECT * FROM users WHERE email LIKE '%@example.com';
         """
-
         statements = parse_sql_statements(complex_sql)
         self.assertEqual(len(statements), 5)
-
-        # Verify all comments are removed
         for stmt in statements:
             self.assertNotIn('--', stmt)
             self.assertNotIn('/*', stmt)
             self.assertNotIn('*/', stmt)
-
-        # Verify specific statements are present
         self.assertTrue(any('CREATE TABLE users' in stmt for stmt in statements))
         self.assertTrue(any('INSERT INTO users' in stmt for stmt in statements))
         self.assertTrue(any('CREATE INDEX' in stmt for stmt in statements))
         self.assertTrue(any('SELECT * FROM users' in stmt for stmt in statements))
 
-    def test_parse_sql_statements_with_begin_end_blocks(self):
+    def test_parse_sql_statements_with_begin_end_blocks(self) -> None:
         """Test parsing SQL statements with BEGIN...END blocks (triggers)."""
         sql_with_triggers = """
         CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT);
@@ -183,18 +173,13 @@ class TestSqlHelper(unittest.TestCase):
         END;
         INSERT INTO users VALUES (1, 'John');
         """
-
         statements = parse_sql_statements(sql_with_triggers)
         self.assertEqual(len(statements), 3)
-
-        # Verify the trigger is parsed as a single statement
         trigger_statement = [stmt for stmt in statements if 'CREATE TRIGGER' in stmt][0]
         self.assertIn('BEGIN', trigger_statement)
         self.assertIn('END', trigger_statement)
         self.assertIn('UPDATE users SET name', trigger_statement)
         self.assertIn('INSERT INTO audit_log', trigger_statement)
-
-        # Verify other statements are parsed correctly
         self.assertTrue(any('CREATE TABLE users' in stmt for stmt in statements))
         self.assertTrue(any('INSERT INTO users VALUES' in stmt for stmt in statements))
 
@@ -251,13 +236,7 @@ class TestSqlHelper(unittest.TestCase):
         EXPLAIN QUERY PLAN SELECT * FROM users;
         """
         statements = parse_sql_statements(multi_sql)
-
-        # Debug: Print what we actually got
-        print(f"\nParsed {len(statements)} statements:")
-        for i, stmt in enumerate(statements, 1):
-            print(f"{i}. {stmt[:80]}...")
-
-        expected_count = 24  # Now the trigger should be parsed as a single statement
+        expected_count = 24
         self.assertEqual(len(statements), expected_count)
         # Spot check a few
         self.assertTrue(any(stmt.startswith('CREATE TABLE') for stmt in statements))
@@ -650,14 +629,13 @@ class TestSqlHelperPerformance(unittest.TestCase):
 
     def test_remove_sql_comments_performance(self):
         """Test performance of comment removal with large SQL."""
-        import time
-
-        # Create large SQL with many comments
-        large_sql = ""
-        for i in range(250):  # Changed from 1000 to 250
-            large_sql += f"SELECT * FROM table{i}; -- Comment {i}\n"
-            large_sql += f"/* Multi-line comment {i} */\n"
-
+        # Create a large SQL string with many comments and statements
+        large_sql = "".join([
+            f"-- This is a comment for statement {i}\n"
+            f"/* Block comment {i} */\n"
+            f"INSERT INTO test_table (col) VALUES ({i});\n"
+            for i in range(250)
+        ])
         start_time = time.time()
         clean_sql = remove_sql_comments(large_sql)
         end_time = time.time()
@@ -670,13 +648,7 @@ class TestSqlHelperPerformance(unittest.TestCase):
 
     def test_parse_sql_statements_performance(self):
         """Test performance of SQL parsing with many statements."""
-        import time
-
-        # Create SQL with many statements
-        many_statements = ""
-        for i in range(250):  # Changed from 1000 to 250
-            many_statements += f"INSERT INTO users VALUES ({i}, 'User{i}');\n"
-
+        many_statements = "".join([f"INSERT INTO test_table (col) VALUES ({i});\n" for i in range(250)])
         start_time = time.time()
         statements = parse_sql_statements(many_statements)
         end_time = time.time()
@@ -687,24 +659,20 @@ class TestSqlHelperPerformance(unittest.TestCase):
 
     def test_detect_statement_type_performance(self):
         """Test performance of statement type detection with complex SQL."""
-        import time
-
-        # Create complex SQL with CTEs
         complex_sql = """
-        WITH cte1 AS (
-            SELECT id, name FROM users WHERE active = 1
-        ), cte2 AS (
-            SELECT id, email FROM profiles WHERE verified = 1
-        ), cte3 AS (
-            SELECT id, phone FROM contacts WHERE primary = 1
+        WITH cte AS (
+            SELECT t1.id, t2.value
+            FROM table1 t1
+            JOIN table2 t2 ON t1.id = t2.t1_id
+            WHERE t2.value > 100
         )
-        SELECT c1.name, c2.email, c3.phone
-        FROM cte1 c1
-        JOIN cte2 c2 ON c1.id = c2.id
-        JOIN cte3 c3 ON c1.id = c3.id
-        WHERE c1.name LIKE '%John%'
+        SELECT cte.id, SUM(cte.value) OVER (PARTITION BY cte.id)
+        FROM cte
+        WHERE cte.id IN (
+            SELECT id FROM table3 WHERE flag = 1
+        )
+        ORDER BY cte.id;
         """
-
         start_time = time.time()
         for _ in range(250):  # Use 250 iterations as requested
             result = detect_statement_type(complex_sql)
@@ -818,6 +786,660 @@ class TestSqlHelperIntegration(unittest.TestCase):
                 self.assertIn(stmt_type, ['execute', 'fetch'])
         finally:
             os.unlink(temp_file)
+
+
+class TestSqlHelperCoverage(unittest.TestCase):
+    """Additional tests to improve coverage for sql_helper.py."""
+    
+    def test_detect_statement_type_with_very_long_sql(self) -> None:
+        """Test detect_statement_type with very long SQL."""
+        # Create a very long SQL statement
+        long_sql = "SELECT " + "1, " * 1000 + "1"
+        result = detect_statement_type(long_sql)
+        self.assertEqual(result, 'fetch')
+    
+    def test_detect_statement_type_with_malformed_sql(self) -> None:
+        """Test detect_statement_type with malformed SQL."""
+        malformed_sql = "SELECT * FROM table WHERE column = 'unclosed string"
+        result = detect_statement_type(malformed_sql)
+        # Should still return a valid result despite malformed SQL
+        self.assertIn(result, ['fetch', 'execute'])
+    
+    def test_detect_statement_type_with_nested_comments(self) -> None:
+        """Test detect_statement_type with nested comments."""
+        sql = """
+        /* Outer comment
+           /* Inner comment */
+        */
+        SELECT * FROM table
+        """
+        result = detect_statement_type(sql)
+        # Nested block comments are not supported in standard SQL
+        # The function correctly returns 'execute' for this malformed input
+        self.assertEqual(result, 'execute')
+    
+    def test_detect_statement_type_with_string_literals_containing_keywords(self) -> None:
+        """Test detect_statement_type with string literals containing SQL keywords."""
+        sql = "SELECT * FROM table WHERE column = 'INSERT INTO other_table'"
+        result = detect_statement_type(sql)
+        self.assertEqual(result, 'fetch')
+        
+        sql = "SELECT * FROM table WHERE column = 'UPDATE other_table SET'"
+        result = detect_statement_type(sql)
+        self.assertEqual(result, 'fetch')
+    
+    def test_detect_statement_type_with_cte_and_multiple_statements(self) -> None:
+        """Test detect_statement_type with CTE and multiple statements."""
+        sql = """
+        WITH cte AS (
+            SELECT * FROM table1
+        )
+        INSERT INTO table2 SELECT * FROM cte;
+        UPDATE table3 SET column = 1;
+        """
+        result = detect_statement_type(sql)
+        self.assertEqual(result, 'execute')
+    
+    def test_detect_statement_type_with_complex_nested_parens(self) -> None:
+        """Test detect_statement_type with complex nested parentheses."""
+        sql = """
+        SELECT * FROM table1 
+        WHERE id IN (
+            SELECT id FROM table2 
+            WHERE column IN (
+                SELECT column FROM table3 
+                WHERE value = (
+                    SELECT MAX(value) FROM table4
+                )
+            )
+        )
+        """
+        result = detect_statement_type(sql)
+        self.assertEqual(result, 'fetch')
+    
+    def test_detect_statement_type_with_case_statements(self) -> None:
+        """Test detect_statement_type with CASE statements."""
+        sql = """
+        SELECT 
+            CASE 
+                WHEN condition1 THEN 'value1'
+                WHEN condition2 THEN 'value2'
+                ELSE 'default'
+            END as result
+        FROM table
+        """
+        result = detect_statement_type(sql)
+        self.assertEqual(result, 'fetch')
+    
+    def test_detect_statement_type_with_window_functions(self) -> None:
+        """Test detect_statement_type with window functions."""
+        sql = """
+        SELECT 
+            column1,
+            ROW_NUMBER() OVER (PARTITION BY column2 ORDER BY column3) as rn
+        FROM table
+        """
+        result = detect_statement_type(sql)
+        self.assertEqual(result, 'fetch')
+    
+    def test_detect_statement_type_with_json_operations(self) -> None:
+        """Test detect_statement_type with JSON operations."""
+        sql = """
+        SELECT 
+            json_extract(data, '$.key') as extracted_value
+        FROM table
+        """
+        result = detect_statement_type(sql)
+        self.assertEqual(result, 'fetch')
+    
+    def test_detect_statement_type_with_recursive_cte(self) -> None:
+        """Test detect_statement_type with recursive CTE."""
+        sql = """
+        WITH RECURSIVE cte AS (
+            SELECT 1 as n
+            UNION ALL
+            SELECT n + 1 FROM cte WHERE n < 10
+        )
+        SELECT * FROM cte
+        """
+        result = detect_statement_type(sql)
+        self.assertEqual(result, 'fetch')
+    
+    def test_detect_statement_type_with_union_queries(self) -> None:
+        """Test detect_statement_type with UNION queries."""
+        sql = """
+        SELECT * FROM table1
+        UNION
+        SELECT * FROM table2
+        """
+        result = detect_statement_type(sql)
+        self.assertEqual(result, 'fetch')
+        
+        sql = """
+        INSERT INTO table1 SELECT * FROM table2
+        UNION
+        INSERT INTO table3 SELECT * FROM table4
+        """
+        result = detect_statement_type(sql)
+        self.assertEqual(result, 'execute')
+    
+    def test_detect_statement_type_with_subqueries_in_dml(self) -> None:
+        """Test detect_statement_type with subqueries in DML statements."""
+        sql = """
+        UPDATE table1 
+        SET column1 = (SELECT MAX(column1) FROM table2)
+        WHERE id IN (SELECT id FROM table3 WHERE condition = 1)
+        """
+        result = detect_statement_type(sql)
+        self.assertEqual(result, 'execute')
+        
+        sql = """
+        DELETE FROM table1 
+        WHERE id IN (SELECT id FROM table2 WHERE condition = 1)
+        """
+        result = detect_statement_type(sql)
+        self.assertEqual(result, 'execute')
+    
+    def test_detect_statement_type_with_aliases_and_keywords(self) -> None:
+        """Test detect_statement_type with table aliases and keywords."""
+        sql = """
+        SELECT t1.*, t2.column 
+        FROM table1 AS t1 
+        JOIN table2 AS t2 ON t1.id = t2.id
+        """
+        result = detect_statement_type(sql)
+        self.assertEqual(result, 'fetch')
+    
+    def test_detect_statement_type_with_sqlite_specific_functions(self) -> None:
+        """Test detect_statement_type with SQLite-specific functions."""
+        sql = """
+        SELECT 
+            sqlite_version() as version,
+            random() as rand_value,
+            datetime('now') as current_time
+        """
+        result = detect_statement_type(sql)
+        self.assertEqual(result, 'fetch')
+    
+    def test_detect_statement_type_with_index_operations(self) -> None:
+        """Test detect_statement_type with index operations."""
+        sql = "CREATE INDEX idx_name ON table(column)"
+        result = detect_statement_type(sql)
+        self.assertEqual(result, 'execute')
+        
+        sql = "DROP INDEX idx_name"
+        result = detect_statement_type(sql)
+        self.assertEqual(result, 'execute')
+    
+    def test_detect_statement_type_with_view_operations(self) -> None:
+        """Test detect_statement_type with view operations."""
+        sql = "CREATE VIEW view_name AS SELECT * FROM table"
+        result = detect_statement_type(sql)
+        self.assertEqual(result, 'execute')
+        
+        sql = "DROP VIEW view_name"
+        result = detect_statement_type(sql)
+        self.assertEqual(result, 'execute')
+    
+    def test_detect_statement_type_with_trigger_operations(self) -> None:
+        """Test detect_statement_type with trigger operations."""
+        sql = """
+        CREATE TRIGGER trigger_name 
+        AFTER INSERT ON table 
+        FOR EACH ROW 
+        BEGIN 
+            UPDATE other_table SET count = count + 1; 
+        END
+        """
+        result = detect_statement_type(sql)
+        self.assertEqual(result, 'execute')
+        
+        sql = "DROP TRIGGER trigger_name"
+        result = detect_statement_type(sql)
+        self.assertEqual(result, 'execute')
+    
+    def test_detect_statement_type_with_attach_detach(self) -> None:
+        """Test detect_statement_type with ATTACH/DETACH operations."""
+        sql = "ATTACH DATABASE 'other.db' AS other"
+        result = detect_statement_type(sql)
+        self.assertEqual(result, 'execute')
+        
+        sql = "DETACH DATABASE other"
+        result = detect_statement_type(sql)
+        self.assertEqual(result, 'execute')
+    
+    def test_detect_statement_type_with_savepoint_operations(self) -> None:
+        """Test detect_statement_type with savepoint operations."""
+        sql = "SAVEPOINT savepoint_name"
+        result = detect_statement_type(sql)
+        self.assertEqual(result, 'execute')
+        
+        sql = "RELEASE SAVEPOINT savepoint_name"
+        result = detect_statement_type(sql)
+        self.assertEqual(result, 'execute')
+        
+        sql = "ROLLBACK TO SAVEPOINT savepoint_name"
+        result = detect_statement_type(sql)
+        self.assertEqual(result, 'execute')
+    
+    def test_detect_statement_type_with_reindex_operation(self) -> None:
+        """Test detect_statement_type with REINDEX operation."""
+        sql = "REINDEX"
+        result = detect_statement_type(sql)
+        self.assertEqual(result, 'execute')
+        
+        sql = "REINDEX table_name"
+        result = detect_statement_type(sql)
+        self.assertEqual(result, 'execute')
+        
+        sql = "REINDEX table_name.index_name"
+        result = detect_statement_type(sql)
+        self.assertEqual(result, 'execute')
+    
+    def test_parse_sql_statements_with_complex_nesting(self) -> None:
+        """Test parse_sql_statements with complex nested structures."""
+        complex_sql = """
+        CREATE TABLE table1 (
+            id INTEGER PRIMARY KEY,
+            name TEXT CHECK (name != ''),
+            data TEXT DEFAULT (SELECT 'default' FROM table2 WHERE id = 1)
+        );
+        
+        INSERT INTO table1 (name, data) 
+        VALUES (
+            'test', 
+            (SELECT data FROM table2 WHERE id = 1)
+        );
+        
+        SELECT * FROM table1 WHERE id IN (
+            SELECT id FROM table2 WHERE condition = (
+                SELECT value FROM table3 WHERE id = 1
+            )
+        );
+        """
+        
+        statements = parse_sql_statements(complex_sql)
+        self.assertEqual(len(statements), 3)
+        self.assertIn('CREATE TABLE', statements[0])
+        self.assertIn('INSERT INTO', statements[1])
+        self.assertIn('SELECT * FROM', statements[2])
+    
+    def test_parse_sql_statements_with_string_literals_containing_semicolons(self) -> None:
+        """Test parse_sql_statements with string literals containing semicolons."""
+        sql = """
+        INSERT INTO table (data) VALUES ('text with ; semicolon');
+        SELECT * FROM table WHERE data = 'another; semicolon';
+        """
+        
+        statements = parse_sql_statements(sql)
+        self.assertEqual(len(statements), 2)
+        self.assertIn('INSERT INTO', statements[0])
+        self.assertIn('SELECT * FROM', statements[1])
+    
+    def test_parse_sql_statements_with_comments_containing_semicolons(self) -> None:
+        """Test parse_sql_statements with comments containing semicolons."""
+        sql = """
+        -- This comment has a ; semicolon
+        SELECT * FROM table1;
+        /* This comment also has a ; semicolon */
+        SELECT * FROM table2;
+        """
+        
+        statements = parse_sql_statements(sql)
+        self.assertEqual(len(statements), 2)
+        self.assertIn('SELECT * FROM table1', statements[0])
+        self.assertIn('SELECT * FROM table2', statements[1])
+    
+    def test_parse_sql_statements_with_empty_statements(self) -> None:
+        """Test parse_sql_statements with empty statements."""
+        sql = """
+        SELECT 1;
+        
+        ;
+        
+        SELECT 2;
+        """
+        
+        statements = parse_sql_statements(sql)
+        # Should handle empty statements gracefully
+        self.assertGreaterEqual(len(statements), 2)
+    
+    def test_parse_sql_statements_with_only_comments(self) -> None:
+        """Test parse_sql_statements with only comments."""
+        sql = """
+        -- Only comments here
+        /* No actual SQL statements */
+        """
+        
+        statements = parse_sql_statements(sql)
+        # Should handle comment-only input gracefully
+        self.assertIsInstance(statements, list)
+    
+    def test_parse_sql_statements_with_very_long_statements(self) -> None:
+        """Test parse_sql_statements with very long statements."""
+        # Create a very long SQL statement
+        long_select = "SELECT " + "1, " * 1000 + "1"
+        sql = f"{long_select}; SELECT 2;"
+        
+        statements = parse_sql_statements(sql)
+        self.assertEqual(len(statements), 2)
+        self.assertIn('SELECT 1', statements[0])
+        self.assertIn('SELECT 2', statements[1])
+    
+    def test_parse_sql_statements_with_malformed_sql(self) -> None:
+        """Test parse_sql_statements with malformed SQL."""
+        malformed_sql = """
+        SELECT * FROM table WHERE column = 'unclosed string;
+        INSERT INTO table VALUES (1, 2, 3);
+        """
+        
+        statements = parse_sql_statements(malformed_sql)
+        # Should handle malformed SQL gracefully
+        self.assertIsInstance(statements, list)
+    
+    def test_parse_sql_statements_with_nested_comments(self) -> None:
+        """Test parse_sql_statements with nested comments."""
+        sql = """
+        /* Outer comment
+           /* Inner comment */
+        */
+        SELECT 1;
+        -- Another comment
+        SELECT 2;
+        """
+        
+        statements = parse_sql_statements(sql)
+        self.assertEqual(len(statements), 2)
+        self.assertIn('SELECT 1', statements[0])
+        self.assertIn('SELECT 2', statements[1])
+    
+    def test_parse_sql_statements_with_multiline_strings(self) -> None:
+        """Test parse_sql_statements with multiline string literals."""
+        sql = """
+        INSERT INTO table (data) VALUES (
+            'This is a multiline
+            string literal
+            with multiple lines'
+        );
+        SELECT * FROM table;
+        """
+        
+        statements = parse_sql_statements(sql)
+        self.assertEqual(len(statements), 2)
+        self.assertIn('INSERT INTO', statements[0])
+        self.assertIn('SELECT * FROM', statements[1])
+    
+    def test_parse_sql_statements_with_complex_parens(self) -> None:
+        """Test parse_sql_statements with complex parentheses."""
+        sql = """
+        SELECT * FROM table1 WHERE id IN (
+            SELECT id FROM table2 WHERE column IN (
+                SELECT column FROM table3 WHERE value = (
+                    SELECT MAX(value) FROM table4
+                )
+            )
+        );
+        UPDATE table5 SET column = 1;
+        """
+        
+        statements = parse_sql_statements(sql)
+        self.assertEqual(len(statements), 2)
+        self.assertIn('SELECT * FROM table1', statements[0])
+        self.assertIn('UPDATE table5', statements[1])
+    
+    def test_parse_sql_statements_performance(self) -> None:
+        """Test parse_sql_statements performance with large input."""
+        # Create a large SQL string with many statements
+        statements = []
+        for i in range(100):
+            statements.append(f"SELECT {i} as num;")
+        
+        large_sql = "\n".join(statements)
+        
+        start_time = time.time()
+        result = parse_sql_statements(large_sql)
+        end_time = time.time()
+        
+        self.assertEqual(len(result), 100)
+        # Should complete in reasonable time (less than 1 second)
+        self.assertLess(end_time - start_time, 1.0)
+    
+    def test_detect_statement_type_performance(self) -> None:
+        """Test detect_statement_type performance with complex SQL."""
+        complex_sql = """
+        WITH cte AS (
+            SELECT t1.id, t2.value
+            FROM table1 t1
+            JOIN table2 t2 ON t1.id = t2.t1_id
+            WHERE t2.value > 100
+        )
+        SELECT cte.id, SUM(cte.value) OVER (PARTITION BY cte.id)
+        FROM cte
+        WHERE cte.id IN (
+            SELECT id FROM table3 WHERE flag = 1
+        )
+        ORDER BY cte.id;
+        """
+        start_time = time.time()
+        for _ in range(250):  # Use 250 iterations as requested
+            result = detect_statement_type(complex_sql)
+        end_time = time.time()
+
+        # Should complete 250 iterations in reasonable time (less than 5 second)
+        self.assertLess(end_time - start_time, 5.0)
+        self.assertEqual(result, 'fetch')
+
+    def test_detect_statement_type_edge_cases(self) -> None:
+        """Test detect_statement_type with edge cases to improve coverage."""
+        # Test with None input
+        result = detect_statement_type(None)
+        self.assertEqual(result, 'execute')
+        
+        # Test with empty string
+        result = detect_statement_type("")
+        self.assertEqual(result, 'execute')
+        
+        # Test with whitespace only
+        result = detect_statement_type("   \n\t   ")
+        self.assertEqual(result, 'execute')
+        
+        # Test with malformed SQL that sqlparse can't parse
+        result = detect_statement_type("INVALID SQL WITH UNCLOSED STRING 'test")
+        self.assertEqual(result, 'execute')
+
+    def test_detect_statement_type_with_complex_cte_edge_cases(self) -> None:
+        """Test detect_statement_type with complex CTE edge cases."""
+        # Test CTE with no main statement (invalid SQL, but function detects SELECT inside CTE)
+        sql = """
+        WITH cte AS (
+            SELECT 1 as n
+        )
+        """
+        result = detect_statement_type(sql)
+        self.assertEqual(result, 'fetch')
+        
+        # Test CTE with multiple CTEs but no main statement (invalid SQL, but function detects SELECT inside CTE)
+        sql = """
+        WITH cte1 AS (SELECT 1),
+             cte2 AS (SELECT 2)
+        """
+        result = detect_statement_type(sql)
+        self.assertEqual(result, 'fetch')
+        
+        # Test CTE with complex nesting that might confuse the parser
+        sql = """
+        WITH cte AS (
+            SELECT * FROM (
+                SELECT 1 as n
+            ) sub
+        )
+        SELECT * FROM cte
+        """
+        result = detect_statement_type(sql)
+        self.assertEqual(result, 'fetch')
+
+    def test_split_sql_file_error_handling(self) -> None:
+        """Test split_sql_file error handling to improve coverage."""
+        # Test with None file_path
+        with self.assertRaises(ValueError):
+            split_sql_file(None)
+        
+        # Test with invalid file_path type
+        with self.assertRaises(ValueError):
+            split_sql_file(123)
+        
+        # Test with empty file_path
+        with self.assertRaises(ValueError):
+            split_sql_file("")
+        
+        # Test with non-existent file
+        with self.assertRaises(FileNotFoundError):
+            split_sql_file("non_existent_file.sql")
+
+    def test_parse_sql_statements_edge_cases(self) -> None:
+        """Test parse_sql_statements with edge cases to improve coverage."""
+        # Test with None input
+        result = parse_sql_statements(None)
+        self.assertEqual(result, [])
+        
+        # Test with empty string
+        result = parse_sql_statements("")
+        self.assertEqual(result, [])
+        
+        # Test with only semicolons
+        result = parse_sql_statements(";;;;")
+        self.assertEqual(result, [])
+        
+        # Test with only comments
+        result = parse_sql_statements("-- comment\n/* another comment */")
+        self.assertEqual(result, [])
+
+    def test_remove_sql_comments_edge_cases(self) -> None:
+        """Test remove_sql_comments with edge cases to improve coverage."""
+        # Test with None input
+        result = remove_sql_comments(None)
+        self.assertEqual(result, None)
+        
+        # Test with empty string
+        result = remove_sql_comments("")
+        self.assertEqual(result, "")
+        
+        # Test with sqlparse returning None
+        # This is hard to trigger directly, but we can test the edge case
+        result = remove_sql_comments("   ")
+        self.assertIsInstance(result, str)
+
+    def test_detect_statement_type_with_token_edge_cases(self) -> None:
+        """Test detect_statement_type with token edge cases."""
+        # Test with SQL that has no non-whitespace, non-comment tokens
+        sql = "   \n\t   -- comment\n/* comment */"
+        result = detect_statement_type(sql)
+        self.assertEqual(result, 'execute')
+        
+        # Test with SQL that has only whitespace and comments
+        sql = "   \n\t   "
+        result = detect_statement_type(sql)
+        self.assertEqual(result, 'execute')
+
+    def test_detect_statement_type_with_cte_fallback(self) -> None:
+        """Test detect_statement_type CTE fallback logic."""
+        # Test CTE where _find_main_statement_after_ctes returns None
+        # and _find_first_dml_keyword_top_level is used as fallback
+        sql = """
+        WITH cte AS (
+            SELECT 1 as n
+        )
+        SELECT * FROM cte
+        """
+        result = detect_statement_type(sql)
+        self.assertEqual(result, 'fetch')
+        
+        # Test CTE with INSERT that should return execute
+        sql = """
+        WITH cte AS (
+            SELECT 1 as n
+        )
+        INSERT INTO table SELECT * FROM cte
+        """
+        result = detect_statement_type(sql)
+        self.assertEqual(result, 'execute')
+
+    def test_detect_statement_type_with_complex_parens_in_cte(self) -> None:
+        """Test detect_statement_type with complex parentheses in CTE."""
+        # Test CTE with complex nested parentheses that might confuse the parser
+        sql = """
+        WITH cte AS (
+            SELECT * FROM (
+                SELECT * FROM (
+                    SELECT 1 as n
+                ) sub1
+            ) sub2
+        )
+        SELECT * FROM cte
+        """
+        result = detect_statement_type(sql)
+        self.assertEqual(result, 'fetch')
+
+    def test_detect_statement_type_with_multiple_ctes_and_complex_structure(self) -> None:
+        """Test detect_statement_type with multiple CTEs and complex structure."""
+        # Test multiple CTEs with complex structure
+        sql = """
+        WITH cte1 AS (
+            SELECT 1 as n
+        ), cte2 AS (
+            SELECT 2 as n
+        ), cte3 AS (
+            SELECT 3 as n
+        )
+        SELECT * FROM cte1 UNION SELECT * FROM cte2 UNION SELECT * FROM cte3
+        """
+        result = detect_statement_type(sql)
+        self.assertEqual(result, 'fetch')
+        
+        # Test multiple CTEs with INSERT
+        sql = """
+        WITH cte1 AS (SELECT 1), cte2 AS (SELECT 2)
+        INSERT INTO table SELECT * FROM cte1
+        """
+        result = detect_statement_type(sql)
+        self.assertEqual(result, 'execute')
+
+    def test_detect_statement_type_with_unknown_statement_after_cte(self) -> None:
+        """Test detect_statement_type with unknown statement type after CTE."""
+        # Test CTE with statement that's not in our known types
+        # Function detects SELECT inside CTE, so returns 'fetch'
+        sql = """
+        WITH cte AS (SELECT 1)
+        UNKNOWN_STATEMENT_TYPE
+        """
+        result = detect_statement_type(sql)
+        self.assertEqual(result, 'fetch')
+
+    def test_detect_statement_type_with_fetch_statement_after_cte(self) -> None:
+        """Test detect_statement_type with fetch statement after CTE."""
+        # Test CTE with VALUES statement (which is a fetch statement)
+        sql = """
+        WITH cte AS (SELECT 1)
+        VALUES (1, 2, 3)
+        """
+        result = detect_statement_type(sql)
+        self.assertEqual(result, 'fetch')
+        
+        # Test CTE with SHOW statement
+        sql = """
+        WITH cte AS (SELECT 1)
+        SHOW TABLES
+        """
+        result = detect_statement_type(sql)
+        self.assertEqual(result, 'fetch')
+        
+        # Test CTE with EXPLAIN statement
+        sql = """
+        WITH cte AS (SELECT 1)
+        EXPLAIN SELECT * FROM table
+        """
+        result = detect_statement_type(sql)
+        self.assertEqual(result, 'fetch')
 
 
 if __name__ == '__main__':

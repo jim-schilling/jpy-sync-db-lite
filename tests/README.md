@@ -160,7 +160,7 @@ DbRequest class testing:
 ## Test Dependencies
 
 The tests require:
-- Python 3.7+
+- Python 3.10-3.12
 - SQLAlchemy
 - sqlite3 (built-in)
 - tempfile (built-in)
@@ -214,3 +214,7 @@ When adding new tests:
 | DbRequest Class | 3+ | ✅ Complete |
 
 **Total Test Coverage**: ~45+ comprehensive test methods covering all major functionality and edge cases. 
+
+## Changelog
+
+### [0.2.8] 2025-07-07

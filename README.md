@@ -499,6 +499,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - Enhanced error handling and logging
 - Additional performance testing scenarios
 
+### 0.3.0 (2025-07-07)
+
 ### 0.2.7 (2025-06-29)
 - **Enhanced project configuration** with updated setuptools and setuptools-scm for better version management
 - **Improved dependency management** with specific version constraints for all development and testing dependencies

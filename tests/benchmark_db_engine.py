@@ -11,20 +11,10 @@ This module is licensed under the MIT License.
 import argparse
 import os
 import statistics
+import sys
 import tempfile
 import time
 from typing import Any
-
-# Try to import psutil for memory monitoring, but make it optional
-try:
-    import psutil
-    PSUTIL_AVAILABLE = True
-except ImportError:
-    PSUTIL_AVAILABLE = False
-    psutil = None
-
-# Add parent directory to path for imports
-import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
@@ -34,14 +24,12 @@ from jpy_sync_db_lite.db_engine import DbEngine
 class DbEngineBenchmark:
     """Benchmark class for DbEngine performance testing."""
 
-    def __init__(self, database_url: str = None, num_workers: int = 1):
+    def __init__(self, *,database_url: str = None, num_workers: int = 1) -> None:
         """Initialize benchmark with database configuration."""
         if database_url is None:
-            # Create temporary database
-            temp_db_fd, temp_db_path = tempfile.mkstemp(suffix='.db')
-            os.close(temp_db_fd)
-            self.database_url = f"sqlite:///{temp_db_path}"
-            self.temp_db_path = temp_db_path
+            # Use in-memory database for faster benchmarks
+            self.database_url = "sqlite:///:memory:"
+            self.temp_db_path = None
         else:
             self.database_url = database_url
             self.temp_db_path = None
@@ -52,7 +40,7 @@ class DbEngineBenchmark:
 
         self._setup_database()
 
-    def _setup_database(self):
+    def _setup_database(self) -> None:
         """Set up test database with tables and indexes."""
         create_table_sql = """
         CREATE TABLE IF NOT EXISTS benchmark_test (
@@ -82,13 +70,13 @@ class DbEngineBenchmark:
 
     def benchmark_single_inserts(self, num_operations: int = 1000) -> dict[str, Any]:
         """Benchmark single insert operations."""
-        print(f"Benchmarking {num_operations} single insert operations...")
+
 
         # Warm up
         for _ in range(10):
             self.db_engine.execute(
                 "INSERT INTO benchmark_test (name, value, data) VALUES (:name, :value, :data)",
-                {"name": "warmup", "value": 0, "data": "warmup"}
+                params={"name": "warmup", "value": 0, "data": "warmup"}
             )
 
         # Benchmark
@@ -97,10 +85,13 @@ class DbEngineBenchmark:
 
         for i in range(num_operations):
             op_start = time.time()
-            self.db_engine.execute(
+            result = self.db_engine.execute(
                 "INSERT INTO benchmark_test (name, value, data) VALUES (:name, :value, :data)",
-                {"name": f"Benchmark{i}", "value": i, "data": f"Benchmark data {i}"}
+                params={"name": f"Benchmark{i}", "value": i, "data": f"Benchmark data {i}"}
             )
+            # Verify the insert was successful
+            if result.rowcount != 1:
+                raise RuntimeError(f"Expected rowcount 1, got {result.rowcount}")
             op_end = time.time()
             latencies.append((op_end - op_start) * 1000)
 
@@ -125,12 +116,11 @@ class DbEngineBenchmark:
         if batch_sizes is None:
             batch_sizes = [10, 50, 100, 500, 1000]
 
-        print(f"Benchmarking bulk insert operations with batch sizes: {batch_sizes}")
+
 
         results = {}
 
         for batch_size in batch_sizes:
-            print(f"  Testing batch size: {batch_size}")
 
             # Generate test data
             self._generate_test_data(batch_size)
@@ -139,7 +129,7 @@ class DbEngineBenchmark:
             warmup_data = self._generate_test_data(10)
             self.db_engine.execute(
                 "INSERT INTO benchmark_test (name, value, data) VALUES (:name, :value, :data)",
-                warmup_data
+                params=warmup_data
             )
 
             # Benchmark
@@ -153,7 +143,7 @@ class DbEngineBenchmark:
                 op_start = time.time()
                 self.db_engine.execute(
                     "INSERT INTO benchmark_test (name, value, data) VALUES (:name, :value, :data)",
-                    batch_data
+                    params=batch_data
                 )
                 op_end = time.time()
                 latencies.append((op_end - op_start) * 1000)
@@ -182,13 +172,13 @@ class DbEngineBenchmark:
 
     def benchmark_selects(self, num_operations: int = 100) -> dict[str, Any]:
         """Benchmark select operations."""
-        print(f"Benchmarking {num_operations} select operations...")
+
 
         # Insert test data first
         test_data = self._generate_test_data(10000)
         self.db_engine.execute(
             "INSERT INTO benchmark_test (name, value, data) VALUES (:name, :value, :data)",
-            test_data
+            params=test_data
         )
 
         # Test different query types
@@ -210,7 +200,6 @@ class DbEngineBenchmark:
         results = {}
 
         for query_name, query in query_tests:
-            print(f"  Testing: {query_name}")
 
             # Warm up
             for _ in range(5):
@@ -240,7 +229,7 @@ class DbEngineBenchmark:
                 'min_latency': min(latencies),
                 'max_latency': max(latencies),
                 'median_latency': statistics.median(latencies),
-                'result_count': len(self.db_engine.fetch(query))
+                'result_count': len(self.db_engine.fetch(query).data)
             }
 
         return {
@@ -254,12 +243,11 @@ class DbEngineBenchmark:
         if worker_configs is None:
             worker_configs = [1, 2, 4]
 
-        print(f"Benchmarking worker thread scaling with configurations: {worker_configs}")
+
 
         results = {}
 
         for num_workers in worker_configs:
-            print(f"  Testing with {num_workers} worker(s)")
 
             # Create new engine with specific worker count
             test_db_path = f"benchmark_workers_{num_workers}.db"
@@ -289,7 +277,7 @@ class DbEngineBenchmark:
                 if i % 2 == 0:
                     test_engine.execute(
                         "INSERT INTO worker_benchmark (name, value) VALUES (:name, :value)",
-                        {"name": f"WorkerBenchmark{i}", "value": i}
+                        params={"name": f"WorkerBenchmark{i}", "value": i}
                     )
                 else:
                     test_engine.fetch("SELECT * FROM worker_benchmark LIMIT 10")
@@ -389,12 +377,12 @@ class DbEngineBenchmark:
         if hasattr(self, 'db_engine'):
             self.db_engine.shutdown()
 
-        # Clean up temporary database file
+        # Clean up temporary database file (only if it exists)
         if hasattr(self, 'temp_db_path') and self.temp_db_path and os.path.exists(self.temp_db_path):
             try:
                 os.unlink(self.temp_db_path)
-            except Exception as e:
-                print(f"Warning: Could not clean up temporary database {self.temp_db_path}: {e}")
+            except Exception:
+                pass
 
 
 def main():
