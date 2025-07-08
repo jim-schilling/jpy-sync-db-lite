@@ -500,6 +500,32 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - Additional performance testing scenarios
 
 ### 0.3.0 (2025-07-07)
+- **Comprehensive test suite cleanup and optimization** with removal of all debug and extraneous print statements from test files
+- **Enhanced SQL helper test coverage** with 95 comprehensive tests covering edge cases, error handling, and boundary conditions
+- **Improved SQL statement type detection** with robust CTE (Common Table Expression) parsing and handling
+- **Enhanced SQL parsing robustness** with better handling of invalid SQL statements and edge cases
+- **Comprehensive edge case testing** for SQL helper functions including malformed SQL, nested comments, and complex CTE scenarios
+- **Performance testing improvements** with optimized test execution and better coverage of SQL parsing performance
+- **Enhanced error handling** for SQL parsing edge cases including incomplete comments, malformed statements, and invalid file paths
+- **Improved test maintainability** with cleaner test structure and removal of debug output
+- **Better SQL statement type detection** for complex scenarios including:
+  - CTEs with no main statement (invalid SQL handling)
+  - Multiple CTEs with complex nesting
+  - CTEs with unknown statement types after them
+  - Complex parentheses and nested structures in CTEs
+  - Window functions, JSON operations, and recursive CTEs
+- **Enhanced SQL parsing edge cases** including:
+  - Empty statements and whitespace-only input
+  - Statements with only comments
+  - Malformed SQL with unclosed strings or comments
+  - Very long SQL statements and complex nesting
+  - String literals containing SQL keywords or semicolons
+- **Improved file handling** for SQL file operations with comprehensive error handling for invalid paths and file operations
+- **Enhanced integration testing** with full SQL processing pipeline tests and batch processing scenarios
+- **Better test categorization** with unit, integration, performance, and coverage test classifications
+- **Comprehensive performance benchmarking** for SQL parsing operations with realistic workload testing
+- **Code quality improvements** with 90% test coverage for sql_helper.py and robust error handling patterns
+- **Documentation updates** reflecting current test coverage and API behavior expectations
 
 ### 0.2.7 (2025-06-29)
 - **Enhanced project configuration** with updated setuptools and setuptools-scm for better version management
