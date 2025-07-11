@@ -494,7 +494,14 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Changelog
 
-### 0.3.1 (2025-07--11)
+### 0.3.1 (2025-07-11)
+- **Dead code elimination** with removal of unused constants, methods, and imports from the database engine
+- **Code cleanup** with removal of `_BATCH_STATEMENT`, `_SUCCESS`, `_ERROR`, and `_ERROR_COMMIT_FAILED` unused constants
+- **Method cleanup** with removal of unused `_acquire_db_lock` context manager method (~45 lines of dead code)
+- **Import optimization** with removal of unused `time` import from db_engine.py
+- **Code maintainability improvements** with elimination of ~50 lines of unused code
+- **Enhanced code quality** with cleaner, more focused database engine implementation
+- **Better code organization** with removal of redundant and unused code elements
 
 ### 0.3.0 (2025-07-07)
 - **Comprehensive test suite cleanup and optimization** with removal of all debug and extraneous print statements from test files
