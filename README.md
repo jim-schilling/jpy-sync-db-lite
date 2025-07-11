@@ -494,10 +494,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Changelog
 
-### [Unreleased]
-- Performance improvements and optimizations
-- Enhanced error handling and logging
-- Additional performance testing scenarios
+### 0.3.1 (2025-07--11)
 
 ### 0.3.0 (2025-07-07)
 - **Comprehensive test suite cleanup and optimization** with removal of all debug and extraneous print statements from test files
