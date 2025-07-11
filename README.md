@@ -425,7 +425,7 @@ The tests measure:
 
 - **Throughput**: Operations per second (ops/sec)
 - **Latency**: Time per operation in milliseconds
-- **Memory Usage**: Memory consumption and growth rate (requires `psutil`)
+- **Memory Usage**: Memory consumption and growth rate (optional, requires `psutil`)
 - **Concurrency Scaling**: Performance with multiple threads
 
 ### Performance Expectations
@@ -451,15 +451,15 @@ The performance tests provide recommendations for:
 - **Memory efficiency** analysis
 - **Scaling considerations** for concurrent operations
 
-### Memory Monitoring
+### Memory Monitoring (Optional)
 
-Memory usage monitoring requires the `psutil` package:
+Memory usage monitoring is optional and requires the `psutil` package:
 
 ```bash
 pip install psutil
 ```
 
-Without `psutil`, the tests will run but skip memory measurements.
+**Note**: `psutil` is not a dependency of this package. Without `psutil`, the tests will run normally but skip memory measurements.
 
 ### Performance Troubleshooting
 
@@ -621,7 +621,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - Transaction support for complex operations
 - Statistics tracking for monitoring performance
 - Extensive performance testing suite with benchmarks
-- Memory usage monitoring (requires `psutil`)
+- Memory usage monitoring (optional, requires `psutil`)
 - Thread safety through proper connection management
 - WAL mode and optimized cache settings for better concurrency
 

@@ -39,12 +39,16 @@ import time
 from pathlib import Path
 
 
-def run_tests(test_files, markers=None, verbose=True, coverage=True):
+def run_tests(test_files, markers=None, verbose=True, coverage=True, show_output=False):
     """Run tests using pytest."""
     cmd = [sys.executable, "-m", "pytest"]
     
     if verbose:
         cmd.append("-v")
+    
+    # Add -s flag to show print statements for performance/stress tests
+    if show_output:
+        cmd.append("-s")
     
     # Add markers if specified
     if markers:
@@ -206,8 +210,11 @@ def main():
     # Determine if coverage should be enabled
     coverage_enabled = not args.no_coverage
     
+    # Determine if we should show output (for performance/stress tests)
+    show_output = args.performance or args.stress or args.slow
+    
     # Run the tests
-    return run_tests(existing_files, markers, verbose=verbose, coverage=coverage_enabled)
+    return run_tests(existing_files, markers, verbose=verbose, coverage=coverage_enabled, show_output=show_output)
 
 
 if __name__ == "__main__":
