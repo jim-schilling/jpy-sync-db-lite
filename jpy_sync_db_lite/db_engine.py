@@ -9,9 +9,9 @@ This module is licensed under the MIT License.
 """
 
 import logging
+import os
 import queue
 import threading
-import time
 from collections.abc import Generator
 from contextlib import contextmanager
 from typing import Any, NamedTuple, Optional
@@ -25,10 +25,7 @@ from jpy_sync_db_lite.sql_helper import detect_statement_type, parse_sql_stateme
 # Private module-level constants for SQL commands and operations
 _FETCH_STATEMENT: str = "fetch"
 _EXECUTE_STATEMENT: str = "execute"
-_BATCH_STATEMENT: str = "batch"
 _ERROR_STATEMENT: str = "error"
-_SUCCESS: str = "success"
-_ERROR: str = "error"
 
 # SQLite maintenance commands
 _SQL_VACUUM: str = "VACUUM"
@@ -60,7 +57,6 @@ _ERROR_VACUUM_FAILED: str = "VACUUM operation failed: {}"
 _ERROR_ANALYZE_FAILED: str = "ANALYZE operation failed: {}"
 _ERROR_INTEGRITY_CHECK_FAILED: str = "Integrity check failed: {}"
 _ERROR_OPTIMIZATION_FAILED: str = "Optimization operation failed: {}"
-_ERROR_COMMIT_FAILED: str = "Commit failed: {}"
 _ERROR_BATCH_COMMIT_FAILED: str = "Batch commit failed: {}"
 _ERROR_TRANSACTION_FAILED: str = "Transaction failed: {}"
 _ERROR_EXECUTE_FAILED: str = "Execute failed: {}"
@@ -269,70 +265,9 @@ class DbEngine:
                 request.response_queue.put(DbOperationError(str(e)))
             raise DbOperationError(_ERROR_EXECUTE_FAILED.format(e)) from e
 
-    def _execute_batch_statements(
-        self,
-        conn: Connection,
-        batch_sql: str,
-    ) -> list[dict[str, Any]]:
-        """
-        Execute a batch of SQL statements and return results for each.
-        This method raises an exception if any statement fails.
 
-        Args:
-            conn: Database connection
-            batch_sql: SQL string containing multiple statements
-        Returns:
-            List of results for each statement
-        """
-        statements = parse_sql_statements(batch_sql)
-        results: list[dict[str, Any]] = []
-        for stmt in statements:
-            try:
-                stmt_type = detect_statement_type(stmt)
-                if stmt_type == _FETCH_STATEMENT:
-                    result = conn.execute(text(stmt))
-                    rows = result.fetchall()
-                    results.append(
-                        {
-                            "statement": stmt,
-                            "operation": _FETCH_STATEMENT,
-                            "result": [dict(row._mapping) for row in rows],
-                        }
-                    )
-                else:
-                    conn.execute(text(stmt))
-                    results.append(
-                        {
-                            "statement": stmt,
-                            "operation": _EXECUTE_STATEMENT,
-                            "result": True,
-                        }
-                    )
-            except Exception as e:
-                conn.rollback()
-                results.append(
-                    {
-                        "statement": stmt,
-                        "operation": _ERROR_STATEMENT,
-                        "error": str(e),
-                    }
-                )
-                raise
-        try:
-            conn.commit()
-        except Exception as commit_error:
-            conn.rollback()
-            raise DbOperationError(_ERROR_BATCH_COMMIT_FAILED.format(commit_error)) from commit_error
-        return results
 
-    @contextmanager
-    def _acquire_db_lock(self) -> Generator[None, None, None]:
-        """
-        Context manager for acquiring the database engine lock.
-        This ensures thread safety by preventing concurrent database operations.
-        """
-        with self._db_engine_lock:
-            yield
+
 
     def get_stats(self) -> dict[str, int]:
         """

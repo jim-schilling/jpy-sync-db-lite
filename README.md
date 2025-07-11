@@ -425,7 +425,7 @@ The tests measure:
 
 - **Throughput**: Operations per second (ops/sec)
 - **Latency**: Time per operation in milliseconds
-- **Memory Usage**: Memory consumption and growth rate (requires `psutil`)
+- **Memory Usage**: Memory consumption and growth rate (optional, requires `psutil`)
 - **Concurrency Scaling**: Performance with multiple threads
 
 ### Performance Expectations
@@ -451,15 +451,15 @@ The performance tests provide recommendations for:
 - **Memory efficiency** analysis
 - **Scaling considerations** for concurrent operations
 
-### Memory Monitoring
+### Memory Monitoring (Optional)
 
-Memory usage monitoring requires the `psutil` package:
+Memory usage monitoring is optional and requires the `psutil` package:
 
 ```bash
 pip install psutil
 ```
 
-Without `psutil`, the tests will run but skip memory measurements.
+**Note**: `psutil` is not a dependency of this package. Without `psutil`, the tests will run normally but skip memory measurements.
 
 ### Performance Troubleshooting
 
@@ -494,10 +494,14 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Changelog
 
-### [Unreleased]
-- Performance improvements and optimizations
-- Enhanced error handling and logging
-- Additional performance testing scenarios
+### 0.3.1 (2025-07-11)
+- **Dead code elimination** with removal of unused constants, methods, and imports from the database engine
+- **Code cleanup** with removal of `_BATCH_STATEMENT`, `_SUCCESS`, `_ERROR`, and `_ERROR_COMMIT_FAILED` unused constants
+- **Method cleanup** with removal of unused `_acquire_db_lock` context manager method (~45 lines of dead code)
+- **Import optimization** with removal of unused `time` import from db_engine.py
+- **Code maintainability improvements** with elimination of ~50 lines of unused code
+- **Enhanced code quality** with cleaner, more focused database engine implementation
+- **Better code organization** with removal of redundant and unused code elements
 
 ### 0.3.0 (2025-07-07)
 - **Comprehensive test suite cleanup and optimization** with removal of all debug and extraneous print statements from test files
@@ -617,7 +621,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - Transaction support for complex operations
 - Statistics tracking for monitoring performance
 - Extensive performance testing suite with benchmarks
-- Memory usage monitoring (requires `psutil`)
+- Memory usage monitoring (optional, requires `psutil`)
 - Thread safety through proper connection management
 - WAL mode and optimized cache settings for better concurrency
 

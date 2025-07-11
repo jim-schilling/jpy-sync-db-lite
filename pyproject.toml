@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "jpy-sync-db-lite"
-version = "0.3.0"
+version = "0.3.1"
 description = "Jim's Python - Synchronous Database Wrapper for SQLite"
 readme = "README.md"
 license = "MIT"
@@ -115,7 +115,7 @@ ignore_missing_imports = true
 
 [tool.ruff]
 target-version = "py310"
-line-length = 88
+line-length = 120
 select = [
     "E",  # pycodestyle errors
     "W",  # pycodestyle warnings
@@ -137,7 +137,7 @@ ignore = [
 
 [tool.black]
 target-version = ['py310']
-line-length = 88
+line-length = 120
 include = '\\.pyi?$'
 extend-exclude = '''
 /(
@@ -156,7 +156,7 @@ extend-exclude = '''
 [tool.isort]
 profile = "black"
 multi_line_output = 3
-line_length = 88
+line_length = 120
 known_first_party = ["jpy_sync_db_lite"]
 
 [tool.bandit]
