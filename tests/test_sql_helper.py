@@ -20,8 +20,6 @@ from jpy_sync_db_lite.sql_helper import (
     ERROR_STATEMENT,
 )
 from jpy_sync_db_lite.errors import SqlFileError, SqlValidationError
-# Note: Local test utilities were referenced previously but are not part of this repository snapshot.
-# Import removed to ensure tests focus on behavior under test and do not rely on missing helpers.
 
 
 class TestRemoveSqlComments:

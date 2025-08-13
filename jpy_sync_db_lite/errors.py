@@ -12,14 +12,13 @@ from __future__ import annotations
 
 
 class SqlFileError(Exception):
+    """Raised for SQL file I/O or OS-related problems.
 
- """Raised for SQL file I/O or OS-related problems.
+    Examples include file not found, permission denied, or decode errors.
+    """
 
-	Examples include file not found, permission denied, or decode errors.
-	"""
-
- def __init__(self, message: str) -> None:
-  super().__init__(message)
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
 
 
 class SqlValidationError(Exception):
