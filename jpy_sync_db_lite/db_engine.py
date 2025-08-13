@@ -312,7 +312,7 @@ class DbEngine:
 
             raise DbOperationError(f"Invalid operation type: {operation}")
 
-    # Removed legacy worker-based transaction path
+    
 
     def get_stats(self) -> dict[str, int]:
         """

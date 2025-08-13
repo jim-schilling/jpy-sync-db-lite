@@ -244,7 +244,7 @@ class TestDbEngineCoverage(unittest.TestCase):
 
         memory_engine.shutdown()
 
-    # The test_get_sqlite_info_with_file_db test case has been removed as requested.
+    # Placeholder for potential future file-based info test case.
 
     @pytest.mark.unit
     def test_stats_increment(self) -> None:
