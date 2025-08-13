@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "jpy-sync-db-lite"
-version = "0.3.1"
+version = "2025.4.0"
 description = "Jim's Python - Synchronous Database Wrapper for SQLite"
 readme = "README.md"
 license = "MIT"

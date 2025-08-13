@@ -14,6 +14,7 @@ import sys
 import tempfile
 import time
 import unittest
+import pytest
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
@@ -37,7 +38,7 @@ class TestDbEnginePerformance(unittest.TestCase):
     def setUp(self) -> None:
         """Set up test database for performance tests."""
         self.database_url = "sqlite:///:memory:"
-        self.db_engine = DbEngine(self.database_url, num_workers=2, debug=False)
+        self.db_engine = DbEngine(self.database_url, debug=False)
         self.performance_results = {}
         self._create_test_table()
 
@@ -506,82 +507,12 @@ class TestDbEnginePerformance(unittest.TestCase):
         best_throughput = max(r['throughput'] for r in results_by_size.values())
         self.assertGreater(best_throughput, 50)  # At least 50 ops/sec for transactions
 
-    def test_worker_thread_scaling(self):
-        """Test performance with different numbers of worker threads."""
-
-
-        # Test different worker configurations
-        worker_configs = [1, 2, 4]
-        results_by_workers = {}
-
-        for num_workers in worker_configs:
-
-            # Create new engine with specific worker count
-            temp_fd, temp_db_path = tempfile.mkstemp(suffix=f'_workers_{num_workers}.db')
-            os.close(temp_fd)
-            test_engine = DbEngine(f"sqlite:///{temp_db_path}", num_workers=num_workers, debug=False)
-
-            # Create table
-            test_engine.execute("""
-                CREATE TABLE IF NOT EXISTS worker_test (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT NOT NULL,
-                    value INTEGER
-                )
-            """)
-
-            # Generate test data
-            self._generate_test_data(250)
-
-            # Performance test
-            latencies = []
-            num_operations = 100
-
-            start_time = time.time()
-            for i in range(num_operations):
-                op_start = time.time()
-
-                # Mix of operations
-                if i % 2 == 0:
-                    test_engine.execute(
-                        "INSERT INTO worker_test (name, value) VALUES (:name, :value)",
-                        params={"name": f"WorkerTest{i}", "value": i}
-                    )
-                else:
-                    test_engine.fetch("SELECT * FROM worker_test LIMIT 10")
-
-                op_end = time.time()
-                latencies.append((op_end - op_start) * 1000)
-
-            end_time = time.time()
-            total_time = end_time - start_time
-            if total_time == 0:
-                throughput = float('inf')
-            else:
-                throughput = num_operations / total_time
-
-            results_by_workers[num_workers] = {
-                'latency_ms': latencies,
-                'throughput': throughput,
-                'total_time': total_time,
-                'num_workers': num_workers
-            }
-
-            # Cleanup
-            test_engine.shutdown()
-            time.sleep(0.1)
-            try:
-                os.unlink(temp_db_path)
-            except PermissionError:
-                pass
-
-        self.performance_results['worker_scaling'] = results_by_workers
-
-
-
-        # Assertions
-        single_worker_throughput = results_by_workers[1]['throughput']
-        self.assertGreater(single_worker_throughput, 50)  # At least 50 ops/sec with single worker
+    @pytest.mark.slow
+    def test_worker_scaling(self):
+        """Test performance with different worker configurations."""
+        # This test is no longer applicable since workers are not configurable
+        # The system always uses 1 worker thread
+        pass
 
     def test_overall_performance_summary(self):
         """Generate overall performance summary."""

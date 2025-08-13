@@ -6,7 +6,7 @@ A lightweight, thread-safe SQLite database wrapper built on SQLAlchemy with opti
 
 ## Features
 
-- **Thread-safe operations** with worker thread pool
+- **Thread-safe operations** via a single persistent connection protected by locks
 - **SQLAlchemy 2.0+ compatibility** with modern async patterns
 - **Performance optimized** with SQLite-specific pragmas
 - **Simple API** for common database operations
@@ -43,79 +43,81 @@ pip install -e ".[dev]"
 ## Quick Start
 
 ```python
-from jpy_sync_db_lite import DbEngine
+from jpy_sync_db_lite.db_engine import DbEngine
 
-db = DbEngine('sqlite:///my_database.db', 
-              num_workers=1, 
-              debug=False)
+with DbEngine('sqlite:///my_database.db', debug=False) as db:
 
-# Get SQLite information
-sqlite_info = db.get_sqlite_info()
-print(f"SQLite version: {sqlite_info['version']}")
-print(f"Database size: {sqlite_info['database_size']} bytes")
+    # Get SQLite information
+    sqlite_info = db.get_sqlite_info()
+    print(f"SQLite version: {sqlite_info['version']}")
+    print(f"Database size: {sqlite_info['database_size']} bytes")
 
-# Configure SQLite settings for better performance
-db.configure_pragma('cache_size', '-128000')  # 128MB cache
-db.configure_pragma('synchronous', 'NORMAL')   # Balance speed and safety
+    # Configure SQLite settings for better performance
+    db.configure_pragma('cache_size', '-128000')
+    db.configure_pragma('synchronous', 'NORMAL')
 
-# Create a table
-db.execute("""
-    CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY,
-        name TEXT NOT NULL,
-        email TEXT UNIQUE
+    # Create a table
+    db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY,
+            name TEXT NOT NULL,
+            email TEXT UNIQUE
+        )
+        """
     )
-""")
 
-# Insert single record
-db.execute(
-    "INSERT INTO users (name, email) VALUES (:name, :email)",
-    {"name": "John Doe", "email": "john@example.com"}
-)
+    # Insert single record
+    db.execute(
+        "INSERT INTO users (name, email) VALUES (:name, :email)",
+        params={"name": "John Doe", "email": "john@example.com"}
+    )
 
-# Fetch data
-users = db.fetch("SELECT * FROM users WHERE name = :name", {"name": "John Doe"})
-print(users)  # [{'id': 1, 'name': 'John Doe', 'email': 'john@example.com'}]
+    # Fetch data
+    users = db.fetch("SELECT * FROM users WHERE name = :name", params={"name": "John Doe"})
+    print(users)
 
-# Run SQLite maintenance operations
-db.analyze()  # Update query planner statistics
-db.optimize()  # Run optimization commands
+    # Run SQLite maintenance operations
+    db.analyze()
+    db.optimize()
 
-# Check database integrity
-issues = db.integrity_check()
-if issues:
-    print(f"Integrity issues: {issues}")
-else:
-    print("Database integrity check passed")
+    # Check database integrity
+    issues = db.integrity_check()
+    if issues:
+        print(f"Integrity issues: {issues}")
+    else:
+        print("Database integrity check passed")
 
-# Batch operations - execute multiple SQL statements
-batch_sql = """
-    -- Create a new table
-    CREATE TABLE IF NOT EXISTS logs (
-        id INTEGER PRIMARY KEY,
-        message TEXT,
-        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
-    
-    -- Insert multiple log entries
-    INSERT INTO logs (message) VALUES ('Application started');
-    INSERT INTO logs (message) VALUES ('User login successful');
-    
-    -- Query the logs
-    SELECT * FROM logs ORDER BY timestamp DESC LIMIT 5;
-    
-    -- Update a log entry
-    UPDATE logs SET message = 'Application started successfully' WHERE message = 'Application started';
-"""
-batch_results = db.batch(batch_sql)
-print(f"Batch executed {len(batch_results)} statements")
+    # Batch operations - execute multiple SQL statements
+    batch_sql = """
+        -- Create a new table
+        CREATE TABLE IF NOT EXISTS logs (
+            id INTEGER PRIMARY KEY,
+            message TEXT,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
 
-# Optional: Run VACUUM for space reclamation (use sparingly)
-# db.vacuum()
+        -- Insert multiple log entries
+        INSERT INTO logs (message) VALUES ('Application started');
+        INSERT INTO logs (message) VALUES ('User login successful');
 
-# Cleanup
-db.shutdown()
+        -- Query the logs
+        SELECT * FROM logs ORDER BY timestamp DESC LIMIT 5;
+
+        -- Update a log entry
+        UPDATE logs SET message = 'Application started successfully' WHERE message = 'Application started';
+    """
+    batch_results = db.batch(batch_sql)
+    print(f"Batch executed {len(batch_results)} statements")
+
+    # Optional: Run VACUUM for space reclamation (use sparingly)
+    # db.vacuum()
 ```
+
+### More examples
+
+- Basic usage: `python examples/basic_usage.py`
+- Transactions and batch: `python examples/transactions_and_batch.py`
 
 ## API Reference
 
@@ -126,15 +128,22 @@ The main database engine class that manages connections and operations.
 #### Constructor
 
 ```python
-DbEngine(database_url: str, **kwargs)
+DbEngine(
+    database_url: str,
+    *,
+    debug: bool = False,
+    timeout: int = 30,
+    check_same_thread: bool = False,
+    enable_prepared_statements: bool = True,
+)
 ```
 
 **Parameters:**
 - `database_url`: SQLAlchemy database URL (e.g., 'sqlite:///database.db')
-- `num_workers`: Number of worker threads (default: 1)
 - `debug`: Enable SQLAlchemy echo mode (default: False)
 - `timeout`: SQLite connection timeout in seconds (default: 30)
 - `check_same_thread`: SQLite thread safety check (default: False)
+- `enable_prepared_statements`: Enable prepared statement caching (default: True)
 
 #### Methods
 
@@ -148,8 +157,8 @@ db.execute("UPDATE users SET name = :name WHERE id = :id",
 
 # Bulk operation
 updates = [{"id": 1, "status": "active"}, {"id": 2, "status": "inactive"}]
-count = db.execute("UPDATE users SET status = :status WHERE id = :id", updates)
-print(f"Updated {count} users")
+res = db.execute("UPDATE users SET status = :status WHERE id = :id", updates)
+print(f"Updated {res.rowcount} users")
 ```
 
 ##### fetch(query, params=None)
@@ -190,9 +199,14 @@ print(f"Requests: {stats['requests']}, Errors: {stats['errors']}")
 
 ##### shutdown()
 Gracefully shutdown the database engine and worker threads.
+Also supported via context manager protocol.
 
 ```python
 db.shutdown()
+
+# or
+with DbEngine('sqlite:///db.sqlite') as db:
+    ...
 ```
 
 ##### get_sqlite_info()
@@ -285,7 +299,7 @@ db.optimize()
 
 This method runs `PRAGMA optimize` and `ANALYZE` to improve query performance.
 
-##### batch(batch_sql, allow_select=True)
+##### batch(batch_sql)
 Execute multiple SQL statements in a batch with thread safety.
 
 ```python
@@ -314,15 +328,12 @@ for i, result in enumerate(results):
 
 **Parameters:**
 - `batch_sql`: SQL string containing multiple statements separated by semicolons
-- `allow_select`: If True, allows SELECT statements (default: True). If False, raises an error if SELECT statements are found
 
 **Returns:**
 List of dictionaries containing results for each statement:
 - `statement`: The actual SQL statement executed
-- `operation`: 'fetch', 'execute', or 'error'
-- `result`: Query results (for SELECT) or True (for other operations)
-- `row_count`: Number of rows affected/returned
-- `error`: Error message (only for failed statements)
+- `operation`: 'fetch' or 'execute'
+- `result`: DbResult for each statement (fetch has data populated, execute has rowcount)
 
 **Features:**
 - **Robust SQL parsing** using sqlparse library for reliable statement parsing
@@ -338,18 +349,15 @@ List of dictionaries containing results for each statement:
 The library includes several SQLite-specific optimizations:
 
 - **WAL mode** for better concurrency
-- **Optimized cache settings** (64MB cache)
-- **Memory-mapped files** (256MB)
+- **Configurable cache settings** (via PRAGMA)
+- **Memory-mapped files** (via PRAGMA)
 - **Query planner optimization**
 - **Static connection pooling**
 
 ## Thread Safety
 
-All operations are thread-safe through:
-- Worker thread pool for request processing
-- Thread-safe queues for request/response handling
-- Proper connection management per operation
-- Lock-protected statistics updates
+All operations are thread-safe via a single persistent connection protected by locks.
+Requests are executed serially to ensure SQLite correctness, while remaining safe to call from multiple threads.
 
 ## Performance Testing
 
@@ -414,10 +422,9 @@ python -m unittest tests.test_db_engine_performance -v
 - Tests transaction operations with different sizes
 - **Expected**: >50 ops/sec for transactions
 
-#### 7. Worker Thread Scaling
-- Tests performance with different worker thread configurations
-- Helps determine optimal worker count
-- **Expected**: >30 ops/sec with single worker
+#### 7. Benchmark-like Behavioral Checks
+- Lightweight concurrency and throughput checks derived from the standalone benchmark
+- Runs quickly in CI while validating behavior under threaded access
 
 ### Performance Metrics
 
@@ -441,7 +448,7 @@ Based on SQLite with WAL mode and optimized pragmas:
 | Batch Operations| >100 ops/sec      | <100ms avg       |
 | Transactions   | >50 ops/sec       | <100ms avg       |
 | Concurrent Ops | >50 ops/sec       | <100ms avg       |
-| Single Worker  | >30 ops/sec       | <100ms avg       |
+
 
 ### Optimization Recommendations
 
@@ -493,6 +500,17 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 6. Submit a pull request
 
 ## Changelog
+
+### 0.4.0 (2025-08-13)
+- Simplified connection configuration: PRAGMAs applied on the persistent connection for correctness
+- Transaction error signaling simplified to a single error response for failures
+- Prepared statement stats updates are thread-safe
+- Added context manager support to `DbEngine` for automatic shutdown
+- Introduced local `jpy_sync_db_lite.errors` with `SqlFileError` and `SqlValidationError`
+- Tests focus on behavior over implementation and use real SQLite (no mocks)
+- README Quick Start now uses context manager and corrected API examples
+- Removed background worker/queue in favor of synchronous execution with a single persistent connection
+- Added examples under `examples/` and a new benchmark-like test suite for concurrent behavior
 
 ### 0.3.1 (2025-07-11)
 - **Dead code elimination** with removal of unused constants, methods, and imports from the database engine

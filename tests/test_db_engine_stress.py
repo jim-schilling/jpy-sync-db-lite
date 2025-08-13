@@ -27,12 +27,8 @@ class TestDbEngineStress(unittest.TestCase):
         """Set up test fixtures before each test method."""
         # Use file-based SQLite for stress tests to improve concurrency
         self.database_url = "sqlite:///stress_test.db"
-        self.db_engine = DbEngine(
-            self.database_url,
-            timeout=30,
-            check_same_thread=False,
-            num_workers=4  # Use multiple workers for stress testing
-        )
+        # Create database engine for stress testing
+        self.db_engine = DbEngine(self.database_url, debug=False)
         
         # Explicitly enable WAL mode for better concurrency
         self.db_engine.execute("PRAGMA journal_mode=WAL")
