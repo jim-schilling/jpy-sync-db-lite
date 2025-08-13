@@ -24,7 +24,7 @@ from jpy_sync_db_lite.db_engine import DbEngine
 class DbEngineBenchmark:
     """Benchmark class for DbEngine performance testing."""
 
-    def __init__(self, *,database_url: str = None, num_workers: int = 1) -> None:
+    def __init__(self, *,database_url: str = None) -> None:
         """Initialize benchmark with database configuration."""
         if database_url is None:
             # Use in-memory database for faster benchmarks
@@ -34,9 +34,7 @@ class DbEngineBenchmark:
             self.database_url = database_url
             self.temp_db_path = None
 
-        self.num_workers = num_workers
-
-        self.db_engine = DbEngine(self.database_url, num_workers=num_workers, debug=False)
+        self.db_engine = DbEngine(self.database_url, debug=False)
 
         self._setup_database()
 
@@ -68,7 +66,7 @@ class DbEngineBenchmark:
             for i in range(count)
         ]
 
-    def benchmark_single_inserts(self, num_operations: int = 1000) -> dict[str, Any]:
+    def benchmark_single_inserts(self, num_operations: int = 10000) -> dict[str, Any]:
         """Benchmark single insert operations."""
 
 
@@ -116,8 +114,6 @@ class DbEngineBenchmark:
         if batch_sizes is None:
             batch_sizes = [10, 50, 100, 500, 1000]
 
-
-
         results = {}
 
         for batch_size in batch_sizes:
@@ -151,7 +147,7 @@ class DbEngineBenchmark:
             end_time = time.time()
             total_time = end_time - start_time
             total_operations = num_batches * batch_size
-            throughput = total_operations / total_time
+            throughput = total_operations if total_time <= 0.0 else total_operations / total_time
 
             results[batch_size] = {
                 'batch_size': batch_size,
@@ -170,7 +166,7 @@ class DbEngineBenchmark:
             'results': results
         }
 
-    def benchmark_selects(self, num_operations: int = 100) -> dict[str, Any]:
+    def benchmark_selects(self, num_operations: int = 1000) -> dict[str, Any]:
         """Benchmark select operations."""
 
 
@@ -238,81 +234,44 @@ class DbEngineBenchmark:
             'results': results
         }
 
-    def benchmark_worker_scaling(self, worker_configs: list[int] = None) -> dict[str, Any]:
-        """Benchmark performance with different worker thread configurations."""
-        if worker_configs is None:
-            worker_configs = [1, 2, 4]
+    def benchmark_connection_performance(self) -> dict[str, Any]:
+        """Benchmark connection performance and health checks."""
+        # Test connection health and performance
+        latencies = []
+        num_operations = 1000
 
+        start_time = time.time()
+        for i in range(num_operations):
+            op_start = time.time()
+            
+            # Test connection health check
+            is_healthy = self.db_engine.check_connection_health()
+            if not is_healthy:
+                raise RuntimeError("Connection is not healthy")
+            
+            # Test basic operation
+            result = self.db_engine.execute("SELECT 1")
+            if not result.result:
+                raise RuntimeError("Basic operation failed")
+            
+            op_end = time.time()
+            latencies.append((op_end - op_start) * 1000)
 
-
-        results = {}
-
-        for num_workers in worker_configs:
-
-            # Create new engine with specific worker count
-            test_db_path = f"benchmark_workers_{num_workers}.db"
-            test_engine = DbEngine(f"sqlite:///{test_db_path}", num_workers=num_workers, debug=False)
-
-            # Create table
-            test_engine.execute("""
-                CREATE TABLE IF NOT EXISTS worker_benchmark (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT NOT NULL,
-                    value INTEGER
-                )
-            """)
-
-            # Generate test data
-            self._generate_test_data(1000)
-
-            # Benchmark
-            latencies = []
-            num_operations = 100
-
-            start_time = time.time()
-            for i in range(num_operations):
-                op_start = time.time()
-
-                # Mix of operations
-                if i % 2 == 0:
-                    test_engine.execute(
-                        "INSERT INTO worker_benchmark (name, value) VALUES (:name, :value)",
-                        params={"name": f"WorkerBenchmark{i}", "value": i}
-                    )
-                else:
-                    test_engine.fetch("SELECT * FROM worker_benchmark LIMIT 10")
-
-                op_end = time.time()
-                latencies.append((op_end - op_start) * 1000)
-
-            end_time = time.time()
-            total_time = end_time - start_time
-            throughput = num_operations / total_time
-
-            results[num_workers] = {
-                'num_workers': num_workers,
-                'num_operations': num_operations,
-                'total_time': total_time,
-                'throughput': throughput,
-                'latency_ms': latencies,
-                'avg_latency': statistics.mean(latencies),
-                'min_latency': min(latencies),
-                'max_latency': max(latencies),
-                'median_latency': statistics.median(latencies)
-            }
-
-            # Cleanup
-            test_engine.shutdown()
-            time.sleep(0.1)
-            try:
-                os.unlink(test_db_path)
-            except PermissionError:
-                pass
+        end_time = time.time()
+        total_time = end_time - start_time
+        throughput = num_operations / total_time
 
         return {
-            'operation': 'worker_scaling',
-            'worker_configs': worker_configs,
-            'results': results
+            'operation': 'connection_performance',
+            'num_operations': num_operations,
+            'total_time': total_time,
+            'throughput': throughput,
+            'latency_ms': latencies,
+            'avg_latency': statistics.mean(latencies),
+            'min_latency': min(latencies),
+            'max_latency': max(latencies),
+            'median_latency': statistics.median(latencies),
+            'connection_healthy': self.db_engine.check_connection_health()
         }
 
     def print_results(self, results: dict[str, Any]):
@@ -327,8 +286,8 @@ class DbEngineBenchmark:
             self._print_bulk_insert_results(results)
         elif results['operation'] == 'select':
             self._print_select_results(results)
-        elif results['operation'] == 'worker_scaling':
-            self._print_worker_scaling_results(results)
+        elif results['operation'] == 'connection_performance':
+            self._print_connection_performance_results(results)
 
     def _print_single_insert_results(self, results: dict[str, Any]):
         """Print single insert benchmark results."""
@@ -362,15 +321,18 @@ class DbEngineBenchmark:
             print(f"{query_name:<20} {query_results['throughput']:<15.2f} "
                   f"{query_results['avg_latency']:<15.2f} {query_results['result_count']:<10}")
 
-    def _print_worker_scaling_results(self, results: dict[str, Any]):
-        """Print worker scaling benchmark results."""
-        print("Worker Thread Scaling Performance:")
-        print(f"{'Workers':<10} {'Throughput':<15} {'Avg Latency':<15}")
-        print(f"{'-'*10} {'-'*15} {'-'*15}")
-
-        for num_workers, worker_results in results['results'].items():
-            print(f"{num_workers:<10} {worker_results['throughput']:<15.2f} "
-                  f"{worker_results['avg_latency']:<15.2f}")
+    def _print_connection_performance_results(self, results: dict[str, Any]):
+        """Print connection performance benchmark results."""
+        print("Connection Performance:")
+        print(f"  Operations: {results['num_operations']:,}")
+        print(f"  Total Time: {results['total_time']:.2f} seconds")
+        print(f"  Throughput: {results['throughput']:.2f} ops/sec")
+        print(f"  Connection Healthy: {results['connection_healthy']}")
+        print("  Latency Statistics (ms):")
+        print(f"    Average: {results['avg_latency']:.2f}")
+        print(f"    Median:  {results['median_latency']:.2f}")
+        print(f"    Min:     {results['min_latency']:.2f}")
+        print(f"    Max:     {results['max_latency']:.2f}")
 
     def cleanup(self):
         """Clean up resources."""
@@ -389,21 +351,18 @@ def main():
     """Main function for running benchmarks."""
     parser = argparse.ArgumentParser(description='DbEngine Performance Benchmark')
     parser.add_argument('--database', '-d', help='Database URL (default: temporary SQLite)')
-    parser.add_argument('--workers', '-w', type=int, default=1, help='Number of worker threads')
     parser.add_argument('--operations', '-o', type=int, default=1000, help='Number of operations for single insert test')
     parser.add_argument('--select-ops', '-s', type=int, default=100, help='Number of operations for select test')
     parser.add_argument('--batch-sizes', nargs='+', type=int, default=[10, 50, 100, 500, 1000],
                        help='Batch sizes for bulk insert test')
-    parser.add_argument('--worker-configs', nargs='+', type=int, default=[1, 2, 4],
-                       help='Worker thread configurations for scaling test')
     parser.add_argument('--tests', nargs='+',
-                       choices=['single', 'bulk', 'select', 'scaling', 'all'],
+                       choices=['single', 'bulk', 'select', 'connection', 'all'],
                        default=['all'], help='Tests to run')
 
     args = parser.parse_args()
 
     # Initialize benchmark
-    benchmark = DbEngineBenchmark(args.database, args.workers)
+    benchmark = DbEngineBenchmark(database_url=args.database)
 
     try:
         if 'all' in args.tests or 'single' in args.tests:
@@ -418,8 +377,8 @@ def main():
             results = benchmark.benchmark_selects(args.select_ops)
             benchmark.print_results(results)
 
-        if 'all' in args.tests or 'scaling' in args.tests:
-            results = benchmark.benchmark_worker_scaling(args.worker_configs)
+        if 'all' in args.tests or 'connection' in args.tests:
+            results = benchmark.benchmark_connection_performance()
             benchmark.print_results(results)
 
     finally:

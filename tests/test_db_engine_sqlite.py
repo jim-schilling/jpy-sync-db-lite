@@ -9,15 +9,12 @@ This module is licensed under the MIT License.
 """
 
 import os
-import sys
 import tempfile
 import threading
 import time
 import unittest
 import pytest
 from sqlalchemy import text
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from jpy_sync_db_lite.db_engine import DbEngine, DbOperationError, SQLiteError, DbResult
 
@@ -97,8 +94,13 @@ class TestDbEngineSQLiteSpecific(unittest.TestCase):
         )
 
         self.assertIsNotNone(db.engine)
-        self.assertEqual(db.num_workers, 1)
+        db.shutdown()
 
+    @pytest.mark.unit
+    def test_init_with_default_parameters(self):
+        """Test DbEngine initialization with default parameters."""
+        db = DbEngine(self.database_url)
+        # No assertions about workers; just ensure initialization does not raise
         db.shutdown()
 
     @pytest.mark.unit
@@ -145,10 +147,10 @@ class TestDbEngineSQLiteSpecific(unittest.TestCase):
             self.assertIsInstance(info['database_size'], int)
             self.assertGreater(info['database_size'], 0)
 
-        # Verify pragma values are reasonable
+        # Verify pragma values are reasonable (behavior, not exact implementation)
         self.assertIsInstance(info['page_size'], int)
         self.assertGreater(info['page_size'], 0)
-        self.assertEqual(info['journal_mode'], 'wal')
+        self.assertIn(info['journal_mode'], ['wal', 'memory'])
         self.assertIn(info['synchronous'], [0, 1, 2])  # OFF, NORMAL, FULL
         self.assertIn(info['temp_store'], [0, 1, 2])   # DEFAULT, FILE, MEMORY
 

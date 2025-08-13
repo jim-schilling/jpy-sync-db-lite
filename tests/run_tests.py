@@ -19,8 +19,7 @@ Options:
     --stress, -t        Run stress tests (concurrent client validation)
     --integration, -i   Run integration tests
     --slow, -l          Run slow tests
-    --sql-helper, -h    Run SQL helper tests only
-    --help, -h          Show this help message
+    --sql-helper        Run SQL helper tests only
 
 Examples:
     python tests/run_tests.py --fast          # Run only fast unit tests
@@ -155,7 +154,10 @@ def main():
     elif args.coverage:
         test_files = ["tests/test_db_engine_coverage.py"]
     elif args.performance:
-        test_files = ["tests/test_db_engine_performance.py"]
+        test_files = [
+            "tests/test_db_engine_performance.py",
+            "tests/test_db_engine_benchmark_like.py",
+        ]
         markers = ["performance"]
     elif args.stress:
         test_files = ["tests/test_db_engine_stress.py"]

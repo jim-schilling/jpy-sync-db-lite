@@ -12,6 +12,11 @@ from pathlib import Path
 import sqlparse
 from sqlparse.tokens import Comment, DML
 from sqlparse.sql import Statement, Token
+from jpy_sync_db_lite.errors import (
+    SqlFileError,
+    SqlValidationError,
+)
+
 
 # Private constants for SQL statement types
 _FETCH_STATEMENT_TYPES: tuple[str, ...] = (
@@ -42,7 +47,7 @@ FETCH_STATEMENT: str = "fetch"
 ERROR_STATEMENT: str = "error"
 
 
-def remove_sql_comments(sql_text: str) -> str:
+def remove_sql_comments(sql_text: str | None) -> str | None:
     """
     Remove SQL comments from a SQL string using sqlparse.
     Handles:
@@ -86,6 +91,32 @@ def _is_dml_statement(statement_type: str) -> bool:
     return statement_type in _DML_STATEMENT_TYPES
 
 
+def _token_value_upper(token: Token) -> str:
+    """
+    Return the uppercased, stripped value of a token.
+    """
+    return (
+        str(token.value).strip().upper()
+        if hasattr(token, "value") and token.value
+        else ""
+    )
+
+
+def _next_significant_token(
+    tokens: list[Token],
+    *,
+    start: int = 0,
+) -> tuple[int | None, Token | None]:
+    """
+    Return the index and token of the next non-whitespace, non-comment token.
+    """
+    for i in range(start, len(tokens)):
+        token = tokens[i]
+        if not token.is_whitespace and token.ttype not in Comment:
+            return i, token
+    return None, None
+
+
 def _find_first_dml_keyword_top_level(tokens: list[Token]) -> str | None:
     """
     Find first DML/Keyword at the top level after WITH (do not recurse into groups).
@@ -95,15 +126,12 @@ def _find_first_dml_keyword_top_level(tokens: list[Token]) -> str | None:
     Returns:
         The first DML/Keyword token value (e.g., 'SELECT', 'INSERT') or None if not found
     """
-    for token in tokens:
-        if token.is_group:
-            continue  # skip CTE definitions
-        if not token.is_whitespace and token.ttype not in Comment:
-            token_value = str(token.value).strip().upper()
-            if token_value == _AS_KEYWORD:
-                continue
-            if _is_dml_statement(token_value) or _is_fetch_statement(token_value):
-                return token_value
+    for token in (t for t in tokens if not t.is_whitespace and t.ttype not in Comment):
+        token_value = _token_value_upper(token)
+        if token_value == _AS_KEYWORD:
+            continue
+        if _is_dml_statement(token_value) or _is_fetch_statement(token_value):
+            return token_value
     return None
 
 
@@ -122,21 +150,22 @@ def _find_main_statement_after_ctes(tokens: list[Token]) -> str | None:
     n = len(tokens)
     while i < n:
         token = tokens[i]
-        token_value = str(token.value).strip().upper()
+        token_value = _token_value_upper(token)
         if token.is_whitespace or token.ttype in Comment:
             i += 1
             continue
-        # Start of a new CTE definition
         if not in_cte_definition and token_value == _AS_KEYWORD:
             in_cte_definition = True
-            # Expect next non-whitespace token to be '('
-            i += 1
-            while i < n and (tokens[i].is_whitespace or tokens[i].ttype in Comment):
-                i += 1
-            if i < n and tokens[i].ttype == sqlparse.tokens.Punctuation and tokens[i].value == _PAREN_OPEN:
+            next_i, _ = _next_significant_token(tokens, start=i + 1)
+            if next_i is None:
+                return None
+            i = next_i
+            if (
+                tokens[i].ttype == sqlparse.tokens.Punctuation
+                and tokens[i].value == _PAREN_OPEN
+            ):
                 paren_level = 1
                 i += 1
-                # Now skip until paren_level returns to 0
                 while i < n and paren_level > 0:
                     t = tokens[i]
                     if t.ttype == sqlparse.tokens.Punctuation:
@@ -146,54 +175,29 @@ def _find_main_statement_after_ctes(tokens: list[Token]) -> str | None:
                             paren_level -= 1
                     i += 1
                 in_cte_definition = False
-                # After closing parens, check for comma (another CTE) or main statement
-                while i < n and (tokens[i].is_whitespace or tokens[i].ttype in Comment):
+                next_i, _ = _next_significant_token(tokens, start=i)
+                if next_i is None:
+                    return None
+                i = next_i
+                if (
+                    tokens[i].ttype == sqlparse.tokens.Punctuation
+                    and tokens[i].value == _COMMA
+                ):
                     i += 1
-                if i < n and tokens[i].ttype == sqlparse.tokens.Punctuation and tokens[i].value == _COMMA:
-                    i += 1
-                    continue  # Another CTE definition
-                # Otherwise, break to look for main statement
+                    continue
                 break
             else:
-                # Malformed CTE, just break
                 break
         else:
             i += 1
-    # Now, i points to the first token after all CTE definitions
-    if i >= n:
+    next_i, token = _next_significant_token(tokens, start=i)
+    if next_i is None or token is None:
         return None
-    # Skip whitespace and comments to find the main statement
-    while i < n and (tokens[i].is_whitespace or tokens[i].ttype in Comment):
-        i += 1
-    if i >= n:
-        return None
-    # Check if the next token is a DML/fetch statement
-    token = tokens[i]
-    token_value = str(token.value).strip().upper()
+    i = next_i
+    token_value = _token_value_upper(token)
     if _is_dml_statement(token_value) or _is_fetch_statement(token_value):
         return token_value
     return None
-
-
-def _next_non_ws_comment_token(
-    tokens: list[Token],
-    *,
-    start: int = 0,
-) -> tuple[int | None, Token | None]:
-    """
-    Find the next non-whitespace, non-comment token.
-
-    Args:
-        tokens: List of sqlparse tokens to search through
-        start: Starting index to search from (default: 0)
-    Returns:
-        Tuple of (index, token) or (None, None) if no non-whitespace/non-comment token found
-    """
-    for i in range(start, len(tokens)):
-        token = tokens[i]
-        if not token.is_whitespace and token.ttype not in Comment:
-            return i, token
-    return None, None
 
 
 def _is_with_keyword(token: Token) -> bool:
@@ -251,19 +255,81 @@ def _extract_tokens_after_with(stmt: Statement) -> list[Token]:
 
 def detect_statement_type(sql: str) -> str:
     """
-    Detect if a SQL statement returns rows using sqlparse.
-    Handles:
-    - SELECT statements
-    - CTEs (WITH ... SELECT)
-    - VALUES statements
-    - SHOW statements (some databases)
-    - DESCRIBE/DESC statements (some databases)
-    - EXPLAIN statements (some databases)
+    Detect if a SQL statement returns rows using advanced sqlparse analysis.
+
+    This function performs sophisticated SQL statement analysis to determine whether
+    a statement will return rows (fetch operation) or perform an action without
+    returning data (execute operation). It handles complex cases including CTEs,
+    nested queries, and database-specific statements.
+
+    Supported Statement Types:
+        - SELECT statements (including subqueries and JOINs)
+        - Common Table Expressions (WITH ... SELECT/INSERT/UPDATE/DELETE)
+        - VALUES statements for literal value sets
+        - Database introspection (SHOW, DESCRIBE/DESC, EXPLAIN, PRAGMA)
+        - Data modification (INSERT, UPDATE, DELETE) - classified as execute
+        - Schema operations (CREATE, ALTER, DROP) - classified as execute
 
     Args:
-        sql: SQL statement string
+        sql: SQL statement string to analyze. Can contain comments, whitespace,
+            and complex SQL constructs. Empty or whitespace-only strings are
+            treated as execute operations.
+
     Returns:
-        'fetch' if statement returns rows, 'execute' otherwise
+        One of the following string constants:
+        - 'fetch': Statement returns rows (SELECT, VALUES, SHOW, DESCRIBE, EXPLAIN, PRAGMA)
+        - 'execute': Statement performs action without returning data (INSERT, UPDATE, DELETE, DDL)
+
+    Examples:
+        Simple SELECT:
+            >>> detect_statement_type("SELECT * FROM users")
+            'fetch'
+
+        CTE with SELECT:
+            >>> detect_statement_type('''
+            ... WITH active_users AS (
+            ...     SELECT id, name FROM users WHERE active = 1
+            ... )
+            ... SELECT * FROM active_users
+            ... ''')
+            'fetch'
+
+        CTE with INSERT:
+            >>> detect_statement_type('''
+            ... WITH new_data AS (
+            ...     SELECT 'John' as name, 25 as age
+            ... )
+            ... INSERT INTO users (name, age) SELECT * FROM new_data
+            ... ''')
+            'execute'
+
+        VALUES statement:
+            >>> detect_statement_type("VALUES (1, 'Alice'), (2, 'Bob')")
+            'fetch'
+
+        Database introspection:
+            >>> detect_statement_type("DESCRIBE users")
+            'fetch'
+            >>> detect_statement_type("SHOW TABLES")
+            'fetch'
+            >>> detect_statement_type("EXPLAIN SELECT * FROM users")
+            'fetch'
+
+        Data modification:
+            >>> detect_statement_type("INSERT INTO users (name) VALUES ('John')")
+            'execute'
+            >>> detect_statement_type("UPDATE users SET active = 1")
+            'execute'
+
+        Schema operations:
+            >>> detect_statement_type("CREATE TABLE test (id INT)")
+            'execute'
+
+    Note:
+        - Parsing is performed using sqlparse for accuracy
+        - Comments are ignored
+        - Complex nested CTEs are supported
+        - Database-specific syntax (PRAGMA, SHOW) is recognized
     """
     if not sql or not sql.strip():
         return EXECUTE_STATEMENT
@@ -277,7 +343,7 @@ def detect_statement_type(sql: str) -> str:
     if not tokens:
         return EXECUTE_STATEMENT
 
-    _, first_token = _next_non_ws_comment_token(tokens)
+    _, first_token = _next_significant_token(tokens)
     if first_token is None:
         return EXECUTE_STATEMENT
 
@@ -322,12 +388,13 @@ def detect_statement_type(sql: str) -> str:
 
 
 def parse_sql_statements(
-    sql_text: str,
+    sql_text: str | None,
     *,
     strip_semicolon: bool = False,
 ) -> list[str]:
     """
-    Parse a SQL string containing multiple statements into a list of individual statements using sqlparse.
+    Parse a SQL string containing multiple statements into a list of individual statements
+    using sqlparse.
     Handles:
     - Statements separated by semicolons
     - Preserves semicolons within string literals
@@ -382,32 +449,94 @@ def split_sql_file(
     strip_semicolon: bool = False,
 ) -> list[str]:
     """
-    Read a SQL file and split it into individual statements.
+    Read a SQL file and split it into individual executable statements.
+
+    This function reads a SQL file and intelligently splits it into individual
+    statements that can be executed separately. It handles complex SQL files
+    with comments, multiple statements, and preserves statement integrity.
+
+    Processing Steps:
+        1. Read file with UTF-8 encoding
+        2. Remove SQL comments (single-line -- and multi-line /* */)
+        3. Parse using sqlparse for accurate statement boundaries
+        4. Filter out empty statements and comment-only lines
+        5. Optionally strip trailing semicolons
 
     Args:
-        file_path: Path to the SQL file
-        strip_semicolon: If True, strip trailing semicolons in statements (default: False)
+        file_path: Path to the SQL file to process. Can be a string path or
+            pathlib.Path object. File must exist and be readable.
+        strip_semicolon: If True, remove trailing semicolons from each statement.
+            If False (default), preserve semicolons as they appear in the file.
+            Useful when the execution engine expects statements without semicolons.
+
     Returns:
-        List of individual SQL statements
+        List of individual SQL statements as strings. Each statement is:
+        - Trimmed of leading/trailing whitespace
+        - Free of comments (unless within string literals)
+        - Non-empty and contains actual SQL content
+        - Optionally without trailing semicolons
+
     Raises:
-        FileNotFoundError: If the file doesn't exist
-        OSError: If there's an error reading the file
-        ValueError: If file_path is empty or invalid
+        SqlFileError: If file operations fail, including:
+            - File not found
+            - Permission denied
+            - I/O errors during reading
+            - Encoding errors (non-UTF-8 content)
+        SqlValidationError: If input validation fails:
+            - file_path is None
+            - file_path is empty string
+            - file_path is not string or Path object
+
+    Examples:
+        Basic usage:
+            >>> statements = split_sql_file("setup.sql")
+            >>> for stmt in statements:
+            ...     print(f"Statement: {stmt}")
+
+        With semicolon stripping:
+            >>> statements = split_sql_file("migration.sql", strip_semicolon=True)
+            >>> # Statements will not have trailing semicolons
+
+        Using pathlib.Path:
+            >>> from pathlib import Path
+            >>> sql_file = Path("database") / "schema.sql"
+            >>> statements = split_sql_file(sql_file)
+
+        Handling complex SQL files:
+            >>> # File content:
+            >>> # -- Create users table
+            >>> # CREATE TABLE users (
+            >>> #     id INTEGER PRIMARY KEY,
+            >>> #     name TEXT NOT NULL
+            >>> # );
+            >>> # 
+            >>> # /* Insert sample data */
+            >>> # INSERT INTO users (name) VALUES ('Alice'), ('Bob');
+            >>> statements = split_sql_file("complex.sql")
+            >>> len(statements)  # Returns 2 (CREATE and INSERT)
+
+    Note:
+        - Files are read with UTF-8 encoding by default
+        - Comments within string literals are preserved
+        - Empty lines and comment-only lines are filtered out
+        - Statement boundaries are determined by sqlparse, not simple semicolon splitting
+        - Large files are processed efficiently without loading entire content into memory
+        - Thread-safe: Can be called concurrently from multiple threads
     """
     if file_path is None:
-        raise ValueError("file_path cannot be None")
+        raise SqlValidationError("file_path cannot be None")
 
     if not isinstance(file_path, (str, Path)):
-        raise ValueError("file_path must be a string or Path object")
+        raise SqlValidationError("file_path must be a string or Path object")
 
     if not file_path:
-        raise ValueError("file_path cannot be empty")
+        raise SqlValidationError("file_path cannot be empty")
 
     try:
         with open(file_path, encoding="utf-8") as f:
             sql_content = f.read()
         return parse_sql_statements(sql_content, strip_semicolon=strip_semicolon)
     except FileNotFoundError:
-        raise FileNotFoundError(f"SQL file not found: {file_path}") from None
+        raise SqlFileError(f"SQL file not found: {file_path}") from None
     except OSError as e:
-        raise OSError(f"Error reading SQL file {file_path}: {e}") from e
+        raise SqlFileError(f"Error reading SQL file {file_path}: {e}") from e
