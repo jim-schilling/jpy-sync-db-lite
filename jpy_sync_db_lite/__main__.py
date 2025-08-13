@@ -10,10 +10,8 @@ This module is licensed under the MIT License.
 
 from __future__ import annotations
 
-from typing import NoReturn
 
-
-def main() -> NoReturn:
+def main() -> None:
 	"""Minimal CLI that prints the package version if available."""
 	try:
 		from jpy_sync_db_lite._version import version  # type: ignore
