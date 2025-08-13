@@ -18,6 +18,7 @@ def main() -> NoReturn:
 	try:
 		from jpy_sync_db_lite._version import version  # type: ignore
 		print(version)
+
 	except Exception:
 		print("jpy-sync-db-lite")
 
