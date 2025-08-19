@@ -10,7 +10,6 @@ This module is licensed under the MIT License.
 
 import os
 import queue
-import sys
 import tempfile
 import threading
 import time
@@ -18,9 +17,8 @@ import unittest
 import pytest
 from sqlalchemy import text
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-
-from jpy_sync_db_lite.db_engine import DbEngine, DbOperationError, SQLiteError, DbResult
+from jpy_sync_db_lite.db_engine import DbEngine, DbResult
+from jpy_sync_db_lite.errors import OperationError, MaintenanceError, TransactionError
 
 
 class TestDbEngineCoverage(unittest.TestCase):
@@ -127,7 +125,7 @@ class TestDbEngineCoverage(unittest.TestCase):
         INVALID SQL STATEMENT;
         SELECT 2;
         """
-        with self.assertRaises(DbOperationError):
+        with self.assertRaises(TransactionError):
             self.db_engine.batch(batch_sql)
 
     @pytest.mark.unit
@@ -177,7 +175,7 @@ class TestDbEngineCoverage(unittest.TestCase):
             }
         ]
         
-        with self.assertRaises(DbOperationError):
+        with self.assertRaises(TransactionError):
             self.db_engine.execute_transaction(operations)
 
     @pytest.mark.unit
@@ -189,7 +187,7 @@ class TestDbEngineCoverage(unittest.TestCase):
             }
         ]
         
-        with self.assertRaises(DbOperationError):
+        with self.assertRaises(TransactionError):
             self.db_engine.execute_transaction(operations)
 
     @pytest.mark.unit
@@ -201,7 +199,7 @@ class TestDbEngineCoverage(unittest.TestCase):
             }
         ]
         
-        with self.assertRaises(DbOperationError):
+        with self.assertRaises(TransactionError):
             self.db_engine.execute_transaction(operations)
 
     @pytest.mark.unit
@@ -214,7 +212,7 @@ class TestDbEngineCoverage(unittest.TestCase):
     def test_analyze_with_error(self) -> None:
         """Test analyze with potential error."""
         # Test analyze on non-existent table
-        with self.assertRaises(DbOperationError):
+        with self.assertRaises(MaintenanceError):
             self.db_engine.analyze(table_name="non_existent_table")
 
     @pytest.mark.unit
@@ -260,25 +258,16 @@ class TestDbEngineCoverage(unittest.TestCase):
         self.assertGreaterEqual(updated_stats['requests'], initial_stats['requests'])
 
     @pytest.mark.unit
-    def test_sqlite_error_exception(self) -> None:
-        """Test SQLiteError exception class."""
-        error = SQLiteError(123, "Test error message")
-        self.assertEqual(error.error_code, 123)
-        self.assertEqual(error.message, "Test error message")
-        self.assertIn("SQLite error 123", str(error))
-
-    @pytest.mark.unit
     def test_db_operation_error(self) -> None:
         """Test DbOperationError exception."""
-        error = DbOperationError("Test operation error")
+        error = OperationError("Test operation error")
         self.assertIn("Test operation error", str(error))
 
     @pytest.mark.unit
     def test_engine_properties(self) -> None:
         """Test all engine properties."""
         self.assertIsNotNone(self.db_engine.engine)
-        self.assertIsInstance(self.db_engine.shutdown_event, threading.Event)
-        self.assertIsInstance(self.db_engine.stats, dict)
+        self.assertIsInstance(self.db_engine.get_stats(), dict)
 
     @pytest.mark.unit
     def test_execute_with_none_params(self) -> None:
@@ -308,6 +297,277 @@ class TestDbEngineCoverage(unittest.TestCase):
         """
         results = self.db_engine.batch(batch_sql)
         self.assertEqual(len(results), 0)  # Comment-only statements should produce no results
+
+    @pytest.mark.unit
+    def test_prepared_statements_disabled(self) -> None:
+        """Test DbEngine with prepared statements disabled."""
+        # Create engine with prepared statements disabled
+        db = DbEngine(self.database_url, enable_prepared_statements=False)
+        
+        # Run multiple different queries
+        db.execute("SELECT 1 as one")
+        db.fetch("SELECT 2 as two")
+        db.execute("SELECT 3 as three")
+        
+        # Assert no prepared statements are cached
+        self.assertEqual(db.get_prepared_statement_count(), 0)
+        
+        # Verify performance metrics show 0 cached statements
+        perf_info = db.get_performance_info()
+        self.assertEqual(perf_info["performance_metrics"]["prepared_statements_cached"], 0)
+        
+        db.shutdown()
+
+    @pytest.mark.unit
+    def test_prepared_statements_lifecycle(self) -> None:
+        """Test prepared statement cache lifecycle."""
+        # Default engine should have prepared statements enabled
+        db = DbEngine(self.database_url)
+        
+        # Run two distinct execute statements
+        db.execute("SELECT 1 as one")
+        db.execute("SELECT 2 as two")
+        
+        # Should have at least 2 prepared statements cached
+        self.assertGreaterEqual(db.get_prepared_statement_count(), 2)
+        
+        # Clear prepared statements
+        db.clear_prepared_statements()
+        self.assertEqual(db.get_prepared_statement_count(), 0)
+        
+        # Follow-up execute should repopulate cache
+        db.execute("SELECT 3 as three")
+        self.assertGreaterEqual(db.get_prepared_statement_count(), 1)
+        
+        db.shutdown()
+
+    @pytest.mark.unit
+    def test_execute_with_select_rowcount(self) -> None:
+        """Test execute with SELECT statement rowcount handling."""
+        # Execute SELECT should return rowcount=0 and data=None
+        result = self.db_engine.execute("SELECT 1 AS one")
+        self.assertTrue(result.result)
+        self.assertEqual(result.rowcount, 0)
+        self.assertIsNone(result.data)
+        
+        # Fetch SELECT should return data
+        result = self.db_engine.fetch("SELECT 1 AS one")
+        self.assertEqual(result.data[0]["one"], 1)
+
+    @pytest.mark.unit
+    def test_connection_health_and_recreation(self) -> None:
+        """Test connection health and recreation."""
+        # Initially connection should be healthy
+        self.assertTrue(self.db_engine.check_connection_health())
+        
+        # Get initial connection info
+        initial_info = self.db_engine.get_connection_info()
+        initial_recreations = initial_info["connection_recreations"]
+        
+        # Recreate connection
+        self.db_engine.recreate_connection()
+        
+        # Connection should still be healthy
+        self.assertTrue(self.db_engine.check_connection_health())
+        
+        # Connection recreations should have increased
+        updated_info = self.db_engine.get_connection_info()
+        self.assertGreater(updated_info["connection_recreations"], initial_recreations)
+
+    @pytest.mark.unit
+    def test_connection_health_after_shutdown(self) -> None:
+        """Test connection health after shutdown."""
+        # Create a separate engine for this test
+        db = DbEngine(self.database_url)
+        
+        # Initially healthy
+        self.assertTrue(db.check_connection_health())
+        
+        # Shutdown
+        db.shutdown()
+        
+        # After shutdown, health check should return False
+        self.assertFalse(db.check_connection_health())
+
+    @pytest.mark.unit
+    def test_transaction_context_error_propagation(self) -> None:
+        """Test transaction context manager error propagation."""
+        with self.assertRaises(TransactionError):
+            with self.db_engine.transaction() as tx:
+                tx.execute("SELECT 1")
+                raise RuntimeError("Test exception")
+
+    @pytest.mark.unit
+    def test_get_performance_info_structure(self) -> None:
+        """Test get_performance_info structure and computed metrics."""
+        # Get baseline performance info
+        perf_info = self.db_engine.get_performance_info()
+        
+        # Check structure
+        self.assertIn("engine_stats", perf_info)
+        self.assertIn("performance_metrics", perf_info)
+        self.assertIn("requests", perf_info["engine_stats"])
+        self.assertIn("error_rate_percent", perf_info["performance_metrics"])
+        
+        # Perform operations and check metrics change
+        initial_requests = perf_info["engine_stats"]["requests"]
+        
+        self.db_engine.execute("SELECT 1")
+        self.db_engine.fetch("SELECT 2")
+        
+        updated_perf_info = self.db_engine.get_performance_info()
+        self.assertGreater(updated_perf_info["engine_stats"]["requests"], initial_requests)
+        
+        # Error rate should stay 0 for successful operations
+        self.assertEqual(updated_perf_info["performance_metrics"]["error_rate_percent"], 0.0)
+
+    @pytest.mark.unit
+    def test_execute_many_fetch(self) -> None:
+        """Test execute_many with fetch operations."""
+        # Insert test data for fetch operations
+        self.db_engine.execute("""
+            INSERT INTO test_users (name, email, active) 
+            VALUES ('Test User 1', 'test1@example.com', 1)
+        """)
+        self.db_engine.execute("""
+            INSERT INTO test_users (name, email, active) 
+            VALUES ('Test User 2', 'test2@example.com', 1)
+        """)
+        
+        # Execute many fetch operations
+        params_list = [
+            {"name": "Test User 1"},
+            {"name": "Test User 2"}
+        ]
+        
+        results = self.db_engine.execute_many(
+            "SELECT * FROM test_users WHERE name = :name",
+            params_list
+        )
+        
+        # Should have 2 results
+        self.assertEqual(len(results), 2)
+        
+        # Each result should have data
+        for result in results:
+            self.assertIsInstance(result, DbResult)
+            self.assertIsNotNone(result.data)
+            self.assertEqual(len(result.data), 1)  # One row per query
+
+    @pytest.mark.unit
+    def test_execute_many_execute(self) -> None:
+        """Test execute_many with execute operations."""
+        # Execute many insert operations
+        params_list = [
+            {"name": "Bulk User 1", "email": "bulk1@example.com", "active": 1},
+            {"name": "Bulk User 2", "email": "bulk2@example.com", "active": 1},
+            {"name": "Bulk User 3", "email": "bulk3@example.com", "active": 0}
+        ]
+        
+        results = self.db_engine.execute_many(
+            "INSERT INTO test_users (name, email, active) VALUES (:name, :email, :active)",
+            params_list
+        )
+        
+        # Should have 3 results
+        self.assertEqual(len(results), 3)
+        
+        # Each result should have rowcount=1
+        for result in results:
+            self.assertIsInstance(result, DbResult)
+            self.assertEqual(result.rowcount, 1)
+            self.assertTrue(result.result)
+        
+        # Verify total rows were inserted
+        count_result = self.db_engine.fetch("SELECT COUNT(*) as count FROM test_users")
+        total_count = count_result.data[0]["count"]
+        self.assertGreaterEqual(total_count, 6)  # Original 3 + new 3
+
+    @pytest.mark.unit
+    def test_batch_and_script_mapping(self) -> None:
+        """Test batch() and script() mapping behavior."""
+        # Create a script with mixed operations
+        script_sql = """
+        CREATE TABLE IF NOT EXISTS batch_test (id INTEGER PRIMARY KEY, name TEXT);
+        INSERT INTO batch_test (name) VALUES ('test1');
+        SELECT COUNT(*) as count FROM batch_test;
+        INSERT INTO batch_test (name) VALUES ('test2');
+        SELECT name FROM batch_test ORDER BY id;
+        """
+        
+        # Test batch execution
+        batch_results = self.db_engine.batch(script_sql)
+        
+        # Should have results for each statement
+        self.assertGreater(len(batch_results), 0)
+        
+        # Each result should have operation type
+        for result in batch_results:
+            self.assertIn(result["operation"], {"execute", "fetch"})
+            if result["operation"] == "fetch":
+                self.assertIsNotNone(result["result"].data)
+        
+        # Test script execution
+        script_results = self.db_engine.script(script_sql)
+        
+        # Should have same number of results
+        self.assertEqual(len(script_results), len(batch_results))
+        
+        # Each result should have operation type
+        for result in script_results:
+            self.assertIn(result["operation"], {"execute", "fetch"})
+
+    @pytest.mark.unit
+    def test_maintenance_operations(self) -> None:
+        """Test maintenance operations happy paths."""
+        # Vacuum should not raise
+        self.db_engine.vacuum()
+        
+        # Analyze should not raise
+        self.db_engine.analyze()
+        
+        # Optimize should not raise
+        self.db_engine.optimize()
+        
+        # Integrity check should return list
+        issues = self.db_engine.integrity_check()
+        self.assertIsInstance(issues, list)
+
+    @pytest.mark.unit
+    def test_get_sqlite_info_file_vs_memory(self) -> None:
+        """Test get_sqlite_info with file vs memory databases."""
+        # Memory DB info
+        memory_info = self.db_engine.get_sqlite_info()
+        self.assertIn('version', memory_info)
+        self.assertIn('database_size', memory_info)
+        # Database size might be None for in-memory
+        
+        # File DB info
+        temp_db = tempfile.NamedTemporaryFile(delete=False, suffix='.db')
+        temp_db.close()
+        try:
+            file_db = DbEngine(f"sqlite:///{temp_db.name}")
+            
+            # Perform a write to ensure file is created
+            file_db.execute("CREATE TABLE test (id INTEGER PRIMARY KEY)")
+            file_db.execute("INSERT INTO test (id) VALUES (1)")
+            
+            file_info = file_db.get_sqlite_info()
+            self.assertIn('version', file_info)
+            self.assertIn('database_size', file_info)
+            
+            # File DB should have a size
+            self.assertIsInstance(file_info['database_size'], int)
+            
+            file_db.shutdown()
+        finally:
+            # Clean up temp file
+            try:
+                os.unlink(temp_db.name)
+            except OSError:
+                pass
+
+
 
 
 if __name__ == '__main__':

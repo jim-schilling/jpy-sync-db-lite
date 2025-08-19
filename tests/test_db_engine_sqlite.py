@@ -16,7 +16,8 @@ import unittest
 import pytest
 from sqlalchemy import text
 
-from jpy_sync_db_lite.db_engine import DbEngine, DbOperationError, SQLiteError, DbResult
+from jpy_sync_db_lite.db_engine import DbEngine, DbResult
+from jpy_sync_db_lite.errors import OperationError, MaintenanceError
 
 
 class TestDbEngineSQLiteSpecific(unittest.TestCase):
@@ -242,14 +243,12 @@ class TestDbEngineSQLiteSpecific(unittest.TestCase):
     @pytest.mark.unit
     def test_analyze_error_wrapping(self):
         # Pass an invalid table name to reliably trigger an error
-        with self.assertRaises(DbOperationError):
+        with self.assertRaises(MaintenanceError):
             self.db_engine.analyze(table_name='this_table_does_not_exist')
 
     @pytest.mark.unit
     def test_maintenance_operations_error_wrapping(self):
-        """Test that all maintenance operations properly wrap errors in DbOperationError."""
-        from jpy_sync_db_lite.db_engine import DbOperationError
-
+        """Test that all maintenance operations properly wrap errors in appropriate exception types."""
         # Test all maintenance operations to ensure they wrap errors properly
         maintenance_operations = [
             (self.db_engine.vacuum, "VACUUM operation failed"),
@@ -263,21 +262,10 @@ class TestDbEngineSQLiteSpecific(unittest.TestCase):
             try:
                 operation()
                 # If operation succeeds, that's fine - we're just testing error wrapping
-            except DbOperationError as e:
-                # If an error occurs, it should be wrapped in DbOperationError
-                self.assertIsInstance(e, DbOperationError)
+            except MaintenanceError as e:
+                # If an error occurs, it should be wrapped in MaintenanceError
+                self.assertIsInstance(e, MaintenanceError)
                 self.assertIn(expected_error_text, str(e))
-
-    @pytest.mark.unit
-    def test_sqlite_error_class(self):
-        """Test SQLiteError exception class."""
-        from jpy_sync_db_lite.db_engine import SQLiteError
-
-        # Test SQLiteError creation
-        error = SQLiteError(1, "Test error message")
-        self.assertEqual(error.error_code, 1)
-        self.assertEqual(error.message, "Test error message")
-        self.assertIn("SQLite error 1", str(error))
 
     @pytest.mark.unit
     def test_enhanced_performance_configuration(self):

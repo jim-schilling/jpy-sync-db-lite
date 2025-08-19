@@ -501,7 +501,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Changelog
 
-### 0.4.0 (2025-08-13)
+### 2025.4.1 (2025-08-19)
+
+### 2025.4.0 (2025-08-13)
 - Simplified connection configuration: PRAGMAs applied on the persistent connection for correctness
 - Transaction error signaling simplified to a single error response for failures
 - Prepared statement stats updates are thread-safe

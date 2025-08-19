@@ -9,13 +9,11 @@ This module is licensed under the MIT License.
 """
 
 import os
-import sys
+import tempfile
 import time
 import unittest
 import pytest
 from concurrent.futures import ThreadPoolExecutor, as_completed
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from jpy_sync_db_lite.db_engine import DbEngine
 
@@ -25,8 +23,10 @@ class TestDbEngineStress(unittest.TestCase):
 
     def setUp(self) -> None:
         """Set up test fixtures before each test method."""
-        # Use file-based SQLite for stress tests to improve concurrency
-        self.database_url = "sqlite:///stress_test.db"
+        # Use unique temp file for stress tests to avoid parallel conflicts
+        self.temp_db = tempfile.NamedTemporaryFile(delete=False, suffix='.db')
+        self.temp_db.close()
+        self.database_url = f"sqlite:///{self.temp_db.name}"
         # Create database engine for stress testing
         self.db_engine = DbEngine(self.database_url, debug=False)
         
@@ -40,14 +40,15 @@ class TestDbEngineStress(unittest.TestCase):
         if hasattr(self, 'db_engine'):
             self.db_engine.shutdown()
         
-        # Clean up the stress test database file and WAL files
-        db_files = ['stress_test.db', 'stress_test.db-wal', 'stress_test.db-shm']
-        for db_file in db_files:
-            if os.path.exists(db_file):
-                try:
-                    os.remove(db_file)
-                except OSError:
-                    pass  # Ignore errors if file is locked
+        # Clean up the temp database file and WAL files
+        if hasattr(self, 'temp_db'):
+            db_files = [self.temp_db.name, f"{self.temp_db.name}-wal", f"{self.temp_db.name}-shm"]
+            for db_file in db_files:
+                if os.path.exists(db_file):
+                    try:
+                        os.remove(db_file)
+                    except OSError:
+                        pass  # Ignore errors if file is locked
 
     @pytest.mark.performance
     def test_concurrent_client_stress(self) -> None:
@@ -131,9 +132,6 @@ class TestDbEngineStress(unittest.TestCase):
             return client_results
         
         # Run concurrent clients
-        print(f"\nStarting stress test with {num_clients} concurrent clients...")
-        print(f"Each client will perform {operations_per_client} operations")
-        print(f"Test duration target: {test_duration} seconds")
         
         start_time = time.time()
         
@@ -154,7 +152,7 @@ class TestDbEngineStress(unittest.TestCase):
                     results['successful_operations'] += client_result['successful']
                     results['failed_operations'] += client_result['failed']
                 except Exception as e:
-                    print(f"Client {client_id} failed with exception: {e}")
+                    pass  # Client failed, but continue with other clients
         
         results['end_time'] = time.time()
         test_duration_actual = results['end_time'] - results['start_time']
@@ -166,29 +164,8 @@ class TestDbEngineStress(unittest.TestCase):
         ops_per_sec = total_ops / test_duration_actual if test_duration_actual > 0 else 0
         success_rate = (successful_ops / total_ops * 100) if total_ops > 0 else 0
         
-        # Print results
-        print(f"\n=== Stress Test Results ===")
-        print(f"Test Duration: {test_duration_actual:.2f} seconds")
-        print(f"Total Operations: {total_ops}")
-        print(f"Successful Operations: {successful_ops}")
-        print(f"Failed Operations: {failed_ops}")
-        print(f"Success Rate: {success_rate:.2f}%")
-        print(f"Operations per Second: {ops_per_sec:.2f}")
-        print(f"Concurrent Clients: {num_clients}")
-        
-        # Print per-client results
-        print(f"\n=== Per-Client Results ===")
-        for client_id, client_result in results['client_results'].items():
-            client_success_rate = (client_result['successful'] / client_result['operations'] * 100) if client_result['operations'] > 0 else 0
-            print(f"Client {client_id}: {client_result['operations']} ops, {client_result['successful']} success, {client_success_rate:.1f}% success rate")
-            if client_result['errors']:
-                print(f"  Errors: {len(client_result['errors'])}")
-                # Print the first error for diagnosis
-                print(f"    First error: {client_result['errors'][0]}")
-        
         # Verify database integrity
         final_count = self.db_engine.fetch("SELECT COUNT(*) as count FROM stress_test")
-        print(f"\nFinal database record count: {final_count.data[0]['count']}")
         
         # Performance assertions
         self.assertGreater(success_rate, 95.0, f"Success rate {success_rate:.2f}% is below 95% threshold")
@@ -200,11 +177,6 @@ class TestDbEngineStress(unittest.TestCase):
         
         # Verify database state
         self.assertGreater(final_count.data[0]['count'], 0, "No records were inserted during stress test")
-        
-        print(f"\n✅ Stress test completed successfully!")
-        print(f"   Success Rate: {success_rate:.2f}%")
-        print(f"   Throughput: {ops_per_sec:.2f} ops/sec")
-        print(f"   Duration: {test_duration_actual:.2f}s")
 
     @pytest.mark.performance
     def test_concurrent_read_write_stress(self) -> None:
@@ -295,9 +267,7 @@ class TestDbEngineStress(unittest.TestCase):
             
             return thread_results
         
-        print(f"\nStarting read/write stress test...")
-        print(f"Readers: {num_readers}, Writers: {num_writers}")
-        print(f"Operations per thread: {operations_per_thread}")
+
         
         start_time = time.time()
         
@@ -337,38 +307,13 @@ class TestDbEngineStress(unittest.TestCase):
         ops_per_sec = total_ops / test_duration if test_duration > 0 else 0
         success_rate = (total_successful / total_ops * 100) if total_ops > 0 else 0
         
-        print(f"\n=== Read/Write Stress Test Results ===")
-        print(f"Test Duration: {test_duration:.2f} seconds")
-        print(f"Total Operations: {total_ops}")
-        print(f"Read Operations: {results['readers']['total']} ({results['readers']['successful']} successful)")
-        print(f"Write Operations: {results['writers']['total']} ({results['writers']['successful']} successful)")
-        print(f"Overall Success Rate: {success_rate:.2f}%")
-        print(f"Operations per Second: {ops_per_sec:.2f}")
-        
-        # Show first few errors for diagnosis
-        if results['readers']['errors']:
-            print(f"\nFirst few read errors:")
-            for i, error in enumerate(results['readers']['errors'][:3]):
-                print(f"  {i+1}. {error}")
-        
-        if results['writers']['errors']:
-            print(f"\nFirst few write errors:")
-            for i, error in enumerate(results['writers']['errors'][:3]):
-                print(f"  {i+1}. {error}")
-        
         # Verify final database state
         final_count = self.db_engine.fetch("SELECT COUNT(*) as count FROM rw_stress_test")
-        print(f"Final database record count: {final_count.data[0]['count']}")
         
         # Assertions
         self.assertGreater(success_rate, 90.0, f"Success rate {success_rate:.2f}% is below 90% threshold")
         self.assertGreater(ops_per_sec, 50.0, f"Operations per second {ops_per_sec:.2f} is below 50 ops/sec threshold")
         self.assertGreater(final_count.data[0]['count'], 10, "Database should have more records after stress test")
-        
-        print(f"\n✅ Read/Write stress test completed successfully!")
-        print(f"   Success Rate: {success_rate:.2f}%")
-        print(f"   Throughput: {ops_per_sec:.2f} ops/sec")
-        print(f"   Duration: {test_duration:.2f}s")
 
     @pytest.mark.performance
     def test_high_concurrency_stress(self) -> None:
@@ -462,10 +407,7 @@ class TestDbEngineStress(unittest.TestCase):
             
             return client_results
         
-        print(f"\nStarting high concurrency stress test...")
-        print(f"Concurrent clients: {num_clients}")
-        print(f"Operations per client: {operations_per_client}")
-        print(f"Total operations: {num_clients * operations_per_client}")
+
         
         start_time = time.time()
         
@@ -484,7 +426,7 @@ class TestDbEngineStress(unittest.TestCase):
                     results['successful_operations'] += client_result['successful']
                     results['failed_operations'] += client_result['failed']
                 except Exception as e:
-                    print(f"Client {client_id} failed with exception: {e}")
+                    pass  # Client failed, but continue with other clients
         
         results['end_time'] = time.time()
         test_duration_actual = results['end_time'] - results['start_time']
@@ -496,28 +438,13 @@ class TestDbEngineStress(unittest.TestCase):
         ops_per_sec = total_ops / test_duration_actual if test_duration_actual > 0 else 0
         success_rate = (successful_ops / total_ops * 100) if total_ops > 0 else 0
         
-        print(f"\n=== High Concurrency Stress Test Results ===")
-        print(f"Test Duration: {test_duration_actual:.2f} seconds")
-        print(f"Total Operations: {total_ops}")
-        print(f"Successful Operations: {successful_ops}")
-        print(f"Failed Operations: {failed_ops}")
-        print(f"Success Rate: {success_rate:.2f}%")
-        print(f"Operations per Second: {ops_per_sec:.2f}")
-        print(f"Concurrent Clients: {num_clients}")
-        
         # Verify database state
         final_count = self.db_engine.fetch("SELECT COUNT(*) as count FROM high_concurrency_test")
-        print(f"Final database record count: {final_count.data[0]['count']}")
         
         # Assertions for high concurrency
         self.assertGreater(success_rate, 85.0, f"Success rate {success_rate:.2f}% is below 85% threshold")
         self.assertGreater(ops_per_sec, 20.0, f"Operations per second {ops_per_sec:.2f} is below 20 ops/sec threshold")
         self.assertEqual(len(results['client_results']), num_clients, "Not all clients completed")
-        
-        print(f"\n✅ High concurrency stress test completed successfully!")
-        print(f"   Success Rate: {success_rate:.2f}%")
-        print(f"   Throughput: {ops_per_sec:.2f} ops/sec")
-        print(f"   Duration: {test_duration_actual:.2f}s")
 
 
 if __name__ == '__main__':

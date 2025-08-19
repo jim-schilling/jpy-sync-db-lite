@@ -10,24 +10,28 @@ This module is licensed under the MIT License.
 
 from __future__ import annotations
 
-import logging
 import os
 import threading
 from collections.abc import Generator
 from contextlib import contextmanager
 from typing import Any, NamedTuple
 
-from sqlalchemy import Connection, create_engine, text
+from sqlalchemy import create_engine, text
+from sqlalchemy.engine import Connection
 from sqlalchemy.pool import StaticPool
 from sqlalchemy.sql import text as sql_text
 
+from jpy_sync_db_lite.errors import (
+    ConnectionError,
+    MaintenanceError,
+    OperationError,
+    TransactionError,
+)
 from jpy_sync_db_lite.sql_helper import detect_statement_type, parse_sql_statements
 
 # Private module-level constants for SQL commands and operations
 _FETCH_STATEMENT: str = "fetch"
 _EXECUTE_STATEMENT: str = "execute"
-_TRANSACTION_STATEMENT: str = "transaction"
-_ERROR_STATEMENT: str = "error"
 
 # SQLite maintenance commands
 _SQL_VACUUM: str = "VACUUM"
@@ -35,80 +39,100 @@ _SQL_ANALYZE: str = "ANALYZE"
 _SQL_INTEGRITY_CHECK: str = "PRAGMA integrity_check"
 _SQL_SQLITE_VERSION: str = "SELECT sqlite_version()"
 
-# SQLite PRAGMA commands
-_SQL_PRAGMA_JOURNAL_MODE: str = "PRAGMA journal_mode=WAL"
-_SQL_PRAGMA_SYNCHRONOUS: str = "PRAGMA synchronous=NORMAL"
-_SQL_PRAGMA_CACHE_SIZE: str = "PRAGMA cache_size=-128000"
-_SQL_PRAGMA_TEMP_STORE: str = "PRAGMA temp_store=MEMORY"
-_SQL_PRAGMA_MMAP_SIZE: str = "PRAGMA mmap_size=268435456"
+# SQLite PRAGMA commands (setters)
+_SQL_PRAGMA_JOURNAL_MODE_SET: str = "PRAGMA journal_mode=WAL"
+_SQL_PRAGMA_SYNCHRONOUS_SET: str = "PRAGMA synchronous=NORMAL"
+_SQL_PRAGMA_CACHE_SIZE_SET: str = "PRAGMA cache_size=-128000"
+_SQL_PRAGMA_TEMP_STORE_SET: str = "PRAGMA temp_store=MEMORY"
+_SQL_PRAGMA_MMAP_SIZE_SET: str = "PRAGMA mmap_size=268435456"
 _SQL_PRAGMA_OPTIMIZE: str = "PRAGMA optimize"
-_SQL_PRAGMA_FOREIGN_KEYS: str = "PRAGMA foreign_keys=ON"
-_SQL_PRAGMA_BUSY_TIMEOUT: str = "PRAGMA busy_timeout=30000"
-_SQL_PRAGMA_AUTO_VACUUM: str = "PRAGMA auto_vacuum=INCREMENTAL"
-_SQL_PRAGMA_PAGE_SIZE: str = "PRAGMA page_size=4096"
-_SQL_PRAGMA_LOCKING_MODE: str = "PRAGMA locking_mode=NORMAL"
-_SQL_PRAGMA_WAL_AUTOCHECKPOINT: str = "PRAGMA wal_autocheckpoint=1000"
-_SQL_PRAGMA_CHECKPOINT_TIMEOUT: str = "PRAGMA checkpoint_timeout=30000"
-_SQL_PRAGMA_WAL_SYNCHRONOUS: str = "PRAGMA wal_synchronous=NORMAL"
-_SQL_PRAGMA_READ_UNCOMMITTED: str = "PRAGMA read_uncommitted=0"
+_SQL_PRAGMA_FOREIGN_KEYS_SET: str = "PRAGMA foreign_keys=ON"
+_SQL_PRAGMA_BUSY_TIMEOUT_SET: str = "PRAGMA busy_timeout=30000"
+_SQL_PRAGMA_AUTO_VACUUM_SET: str = "PRAGMA auto_vacuum=INCREMENTAL"
+_SQL_PRAGMA_PAGE_SIZE_SET: str = "PRAGMA page_size=4096"
+_SQL_PRAGMA_LOCKING_MODE_SET: str = "PRAGMA locking_mode=NORMAL"
+_SQL_PRAGMA_WAL_AUTOCHECKPOINT_SET: str = "PRAGMA wal_autocheckpoint=1000"
+_SQL_PRAGMA_CHECKPOINT_TIMEOUT_SET: str = "PRAGMA checkpoint_timeout=30000"
+_SQL_PRAGMA_WAL_SYNCHRONOUS_SET: str = "PRAGMA wal_synchronous=NORMAL"
+_SQL_PRAGMA_READ_UNCOMMITTED_SET: str = "PRAGMA read_uncommitted=0"
 
-# SQLite info PRAGMA commands
-_SQL_PRAGMA_PAGE_COUNT: str = "PRAGMA page_count"
-_SQL_PRAGMA_PAGE_SIZE: str = "PRAGMA page_size"
+# SQLite info PRAGMA commands (queries)
+_SQL_PRAGMA_PAGE_COUNT_INFO: str = "PRAGMA page_count"
+_SQL_PRAGMA_PAGE_SIZE_INFO: str = "PRAGMA page_size"
 _SQL_PRAGMA_JOURNAL_MODE_INFO: str = "PRAGMA journal_mode"
 _SQL_PRAGMA_SYNCHRONOUS_INFO: str = "PRAGMA synchronous"
 _SQL_PRAGMA_CACHE_SIZE_INFO: str = "PRAGMA cache_size"
 _SQL_PRAGMA_TEMP_STORE_INFO: str = "PRAGMA temp_store"
+_SQL_PRAGMA_MMAP_SIZE_INFO: str = "PRAGMA mmap_size"
+_SQL_PRAGMA_BUSY_TIMEOUT_INFO: str = "PRAGMA busy_timeout"
 
 # Error messages
 _ERROR_VACUUM_FAILED: str = "VACUUM operation failed: {}"
 _ERROR_ANALYZE_FAILED: str = "ANALYZE operation failed: {}"
 _ERROR_INTEGRITY_CHECK_FAILED: str = "Integrity check failed: {}"
 _ERROR_OPTIMIZATION_FAILED: str = "Optimization operation failed: {}"
-_ERROR_BATCH_COMMIT_FAILED: str = "Batch commit failed: {}"
+_ERROR_BATCH_FAILED: str = "Batch failed: {}"
 _ERROR_TRANSACTION_FAILED: str = "Transaction failed: {}"
 _ERROR_EXECUTE_FAILED: str = "Execute failed: {}"
 _ERROR_FETCH_FAILED: str = "Fetch failed: {}"
-_ERROR_BATCH_FAILED: str = "Batch failed: {}"
-
-
-class DbOperationError(Exception):
-    """
-    Exception raised when a database operation fails.
-    """
-    pass
-
-
-class SQLiteError(Exception):
-    """
-    SQLite-specific exception with error code and message.
-    """
-    def __init__(self, error_code: int, message: str) -> None:
-        self._error_code: int = error_code
-        self._message: str = message
-        super().__init__(f"SQLite error {error_code}: {message}")
-
-    @property
-    def error_code(self) -> int:
-        """Return the SQLite error code."""
-        return self._error_code
-
-    @property
-    def message(self) -> str:
-        """Return the SQLite error message."""
-        return self._message
 
 
 class DbResult(NamedTuple):
+    """Result of a database operation."""
     result: bool
-    rowcount: int | None = None
-    data: list[dict] | None = None
+    rowcount: int | None
+    data: list[dict] | None
+
+
+class _TransactionProxy:
+    """
+    Proxy class for collecting operations within a transaction context.
+    
+    This class provides the same interface as DbEngine for execute/fetch operations
+    but collects them for batch execution rather than executing immediately.
+    """
+    
+    def __init__(self, db_engine: 'DbEngine') -> None:
+        self._db_engine = db_engine
+        self._operations: list[dict[str, Any]] = []
+    
+    def execute(self, query: str, params: dict[str, Any] | None = None) -> None:
+        """
+        Queue an execute operation for transaction execution.
+        
+        Args:
+            query: SQL statement to execute
+            params: Parameters for the SQL statement
+        """
+        self._operations.append({
+            "operation": "execute",
+            "query": query,
+            "params": params
+        })
+    
+    def fetch(self, query: str, params: dict[str, Any] | None = None) -> None:
+        """
+        Queue a fetch operation for transaction execution.
+        
+        Note: Fetch results will be available after transaction completion.
+        
+        Args:
+            query: SQL statement to execute
+            params: Parameters for the SQL statement
+        """
+        self._operations.append({
+            "operation": "fetch", 
+            "query": query,
+            "params": params
+        })
 
 
 class DbEngine:
     """
-    Database engine for managing SQLite operations with thread safety and performance optimizations.
-    Optimized for single-connection scenarios.
+    A thread-safe SQLite database engine with connection pooling and performance optimizations.
+    
+    This engine provides a simplified interface for SQLite operations with automatic
+    connection management, prepared statement caching, and performance monitoring.
     """
     def __init__(
         self,
@@ -234,31 +258,53 @@ class DbEngine:
                         pass
                 self._initialize_connection()
 
+    def _is_in_memory_database(self) -> bool:
+        """
+        Check if the database is in-memory.
+        
+        Returns:
+            True if using in-memory database, False otherwise
+        """
+        try:
+            conn = self._get_connection()
+            if hasattr(conn, "engine") and hasattr(conn.engine, "url"):
+                db_path = str(conn.engine.url.database)
+                return db_path == ":memory:" or db_path is None
+        except Exception:
+            pass
+        return False
+
     def _configure_db_performance(self) -> None:
         """
         Configure SQLite database for performance optimizations.
         """
         with self._connection_lock:
             conn = self._get_connection()
+            is_in_memory = self._is_in_memory_database()
+            
             # Core performance PRAGMA settings (connection-scoped)
-            conn.execute(text(_SQL_PRAGMA_JOURNAL_MODE))
-            conn.execute(text(_SQL_PRAGMA_SYNCHRONOUS))
-            conn.execute(text(_SQL_PRAGMA_CACHE_SIZE))
-            conn.execute(text(_SQL_PRAGMA_TEMP_STORE))
-            conn.execute(text(_SQL_PRAGMA_MMAP_SIZE))
-            conn.execute(text(_SQL_PRAGMA_PAGE_SIZE))
-            conn.execute(text(_SQL_PRAGMA_LOCKING_MODE))
+            # These work for both file and in-memory databases
+            conn.execute(text(_SQL_PRAGMA_SYNCHRONOUS_SET))
+            conn.execute(text(_SQL_PRAGMA_CACHE_SIZE_SET))
+            conn.execute(text(_SQL_PRAGMA_TEMP_STORE_SET))
+            conn.execute(text(_SQL_PRAGMA_LOCKING_MODE_SET))
+            
+            # File-specific optimizations (skip for in-memory)
+            if not is_in_memory:
+                conn.execute(text(_SQL_PRAGMA_JOURNAL_MODE_SET))
+                conn.execute(text(_SQL_PRAGMA_MMAP_SIZE_SET))
+                conn.execute(text(_SQL_PRAGMA_PAGE_SIZE_SET))
+                
+                # WAL-specific optimizations (only for file databases)
+                conn.execute(text(_SQL_PRAGMA_WAL_AUTOCHECKPOINT_SET))
+                conn.execute(text(_SQL_PRAGMA_CHECKPOINT_TIMEOUT_SET))
+                conn.execute(text(_SQL_PRAGMA_WAL_SYNCHRONOUS_SET))
+                conn.execute(text(_SQL_PRAGMA_AUTO_VACUUM_SET))
 
-            # WAL-specific optimizations
-            conn.execute(text(_SQL_PRAGMA_WAL_AUTOCHECKPOINT))
-            conn.execute(text(_SQL_PRAGMA_CHECKPOINT_TIMEOUT))
-            conn.execute(text(_SQL_PRAGMA_WAL_SYNCHRONOUS))
-
-            # Transaction and concurrency settings
-            conn.execute(text(_SQL_PRAGMA_READ_UNCOMMITTED))
-            conn.execute(text(_SQL_PRAGMA_FOREIGN_KEYS))
-            conn.execute(text(_SQL_PRAGMA_BUSY_TIMEOUT))
-            conn.execute(text(_SQL_PRAGMA_AUTO_VACUUM))
+            # Transaction and concurrency settings (work for both)
+            conn.execute(text(_SQL_PRAGMA_READ_UNCOMMITTED_SET))
+            conn.execute(text(_SQL_PRAGMA_FOREIGN_KEYS_SET))
+            conn.execute(text(_SQL_PRAGMA_BUSY_TIMEOUT_SET))
 
             # Run optimization
             conn.execute(text(_SQL_PRAGMA_OPTIMIZE))
@@ -278,11 +324,11 @@ class DbEngine:
                 conn.execute(text(f"PRAGMA {pragma_name}={value}"))
                 conn.commit()
         except Exception as e:
-            raise DbOperationError(f"PRAGMA configuration failed: {e}") from e
+            raise OperationError(f"PRAGMA configuration failed: {e}") from e
 
     # Synchronous execution path (no background worker)
-    def _execute_single_request(self, operation: str, query: str, params: Any | None) -> dict | list[dict]:
-        """Execute a single request directly and return raw payload."""
+    def _execute_single_request(self, operation: str, query: str, params: Any | None, *, auto_commit: bool = True) -> DbResult:
+        """Execute a single request directly and return DbResult."""
         self._recreate_connection_if_needed()
 
         with self._connection_lock:
@@ -292,13 +338,17 @@ class DbEngine:
                 stmt = self._get_prepared_statement(query)
                 result = conn.execute(stmt, params or {})
                 rows = result.fetchall()
-                return [dict(row._mapping) for row in rows]
+                data = [dict(row._mapping) for row in rows]
+                return DbResult(result=bool(data), rowcount=len(data), data=data)
 
             if operation == _EXECUTE_STATEMENT:
                 stmt_type = detect_statement_type(query)
                 stmt = self._get_prepared_statement(query)
                 result = conn.execute(stmt, params or {})
-                conn.commit()
+                
+                # Only commit if auto_commit is True (for single operations)
+                if auto_commit:
+                    conn.commit()
 
                 rowcount: int | None = None
                 if stmt_type == _FETCH_STATEMENT:
@@ -308,9 +358,9 @@ class DbEngine:
                 elif isinstance(params, list):
                     rowcount = len(params)
 
-                return {"rowcount": rowcount}
+                return DbResult(result=True, rowcount=rowcount, data=None)
 
-            raise DbOperationError(f"Invalid operation type: {operation}")
+            raise OperationError(f"Invalid operation type: {operation}")
 
     
 
@@ -339,14 +389,14 @@ class DbEngine:
             return row
 
         version_result = self.fetch(_SQL_SQLITE_VERSION)
-        page_count_result = self.fetch(_SQL_PRAGMA_PAGE_COUNT)
-        page_size_result = self.fetch(_SQL_PRAGMA_PAGE_SIZE)
+        page_count_result = self.fetch(_SQL_PRAGMA_PAGE_COUNT_INFO)
+        page_size_result = self.fetch(_SQL_PRAGMA_PAGE_SIZE_INFO)
         journal_mode_result = self.fetch(_SQL_PRAGMA_JOURNAL_MODE_INFO)
         synchronous_result = self.fetch(_SQL_PRAGMA_SYNCHRONOUS_INFO)
         cache_size_result = self.fetch(_SQL_PRAGMA_CACHE_SIZE_INFO)
         temp_store_result = self.fetch(_SQL_PRAGMA_TEMP_STORE_INFO)
-        mmap_size_result = self.fetch(_SQL_PRAGMA_MMAP_SIZE)
-        busy_timeout_result = self.fetch(_SQL_PRAGMA_BUSY_TIMEOUT)
+        mmap_size_result = self.fetch(_SQL_PRAGMA_MMAP_SIZE_INFO)
+        busy_timeout_result = self.fetch(_SQL_PRAGMA_BUSY_TIMEOUT_INFO)
         
         # Extract scalar values from results
         sqlite_version = extract_scalar(version_result.data[0]) if version_result.data else None
@@ -477,11 +527,11 @@ class DbEngine:
                 self._stats["requests"] += 1
                 self._stats["execute_operations"] += 1
             payload = self._execute_single_request(_EXECUTE_STATEMENT, query, params)
-            rowcount = payload.get('rowcount') if isinstance(payload, dict) else None
-            return DbResult(result=True, rowcount=rowcount, data=None)
+            rowcount = payload.rowcount
+            return payload
         except Exception as e:
-            if not isinstance(e, DbOperationError):
-                raise DbOperationError(_ERROR_EXECUTE_FAILED.format(e)) from e
+            if not isinstance(e, OperationError):
+                raise OperationError(_ERROR_EXECUTE_FAILED.format(e)) from e
             raise
 
     def fetch(
@@ -500,29 +550,33 @@ class DbEngine:
                 self._stats["requests"] += 1
                 self._stats["fetch_operations"] += 1
             payload = self._execute_single_request(_FETCH_STATEMENT, query, params)
-            if isinstance(payload, list):
-                return DbResult(result=bool(payload), rowcount=len(payload), data=payload)
-            raise DbOperationError("Unexpected result type from fetch operation")
+            return payload
         except Exception as e:
-            if not isinstance(e, DbOperationError):
-                raise DbOperationError(_ERROR_FETCH_FAILED.format(e)) from e
+            if not isinstance(e, OperationError):
+                raise OperationError(_ERROR_FETCH_FAILED.format(e)) from e
             raise
 
     def batch(
         self,
         batch_sql: str,
-    ) -> list[dict[str, any]]:
+    ) -> list[dict[str, Any]]:
         """
         Execute multiple SQL statements in a batch with thread safety.
         Optimized to use a single connection for all statements.
+        
+        Args:
+            batch_sql: SQL script containing multiple statements
+            
         Returns:
             List of dicts, each containing 'statement', 'operation', and 'result' (DbResult)
+            
+        Raises:
+            OperationError: If the batch execution fails
         """
         with self._stats_lock:
             self._stats["batch_operations"] += 1
             
         statements = parse_sql_statements(batch_sql)
-        results: list[dict[str, any]] = []
         
         # Create operations with proper statement type detection
         operations = []
@@ -533,36 +587,167 @@ class DbEngine:
             else:
                 operations.append({"operation": "execute", "query": stmt})
         
-        # Execute batch synchronously within one transaction
-        with self._connection_lock:
-            conn = self._get_connection()
-            try:
-                for op in operations:
-                    stmt = self._get_prepared_statement(op["query"])
-                    if op["operation"] == _FETCH_STATEMENT:
-                        result = conn.execute(stmt)
-                        rows = [dict(row._mapping) for row in result.fetchall()]
-                        results.append({
-                            "statement": op["query"],
-                            "operation": _FETCH_STATEMENT,
-                            "result": DbResult(result=True, rowcount=len(rows), data=rows),
-                        })
-                    else:
-                        result = conn.execute(stmt)
-                        rc = result.rowcount if hasattr(result, "rowcount") and result.rowcount is not None else 1
-                        results.append({
-                            "statement": op["query"],
-                            "operation": _EXECUTE_STATEMENT,
-                            "result": DbResult(result=True, rowcount=rc, data=None),
-                        })
-                conn.commit()
-            except Exception as e:
-                try:
-                    conn.rollback()
-                except Exception:
-                    pass
-                raise DbOperationError(_ERROR_BATCH_FAILED.format(e)) from e
+        # Use execute_transaction for consistent behavior and error handling
+        transaction_results = self.execute_transaction(operations)
+        
+        # Map transaction results to batch format for backward compatibility
+        results = []
+        for i, (stmt, op_result) in enumerate(zip(statements, transaction_results)):
+            operation = operations[i]["operation"]
+            if operation == _FETCH_STATEMENT:
+                # For fetch operations, create DbResult from the data
+                data = op_result["result"] if isinstance(op_result["result"], list) else []
+                results.append({
+                    "statement": stmt,
+                    "operation": _FETCH_STATEMENT,
+                    "result": DbResult(result=bool(data), rowcount=len(data), data=data),
+                })
+            else:
+                # For execute operations, create DbResult with success indicator
+                results.append({
+                    "statement": stmt,
+                    "operation": _EXECUTE_STATEMENT,
+                    "result": DbResult(result=op_result["result"], rowcount=1, data=None),
+                })
+        
         return results
+
+    def execute_many(
+        self,
+        query: str,
+        params_list: list[dict[str, Any]],
+    ) -> list[DbResult]:
+        """
+        Execute the same query multiple times with different parameter sets.
+        
+        This is optimized for bulk operations where you need to execute the same
+        query with many different parameter sets (e.g., bulk inserts).
+        
+        Args:
+            query: SQL statement to execute
+            params_list: List of parameter dictionaries, one for each execution
+            
+        Returns:
+            List of DbResult objects, one for each execution
+            
+        Raises:
+            OperationError: If any execution fails
+            
+        Example:
+            # Bulk insert users
+            users = [
+                {"name": "Alice", "email": "alice@example.com"},
+                {"name": "Bob", "email": "bob@example.com"},
+            ]
+            results = db.execute_many(
+                "INSERT INTO users (name, email) VALUES (:name, :email)",
+                users
+            )
+        """
+        if not params_list:
+            return []
+            
+        results = []
+        stmt_type = detect_statement_type(query)
+        
+        try:
+            with self._stats_lock:
+                self._stats["requests"] += len(params_list)
+                if stmt_type == _FETCH_STATEMENT:
+                    self._stats["fetch_operations"] += len(params_list)
+                else:
+                    self._stats["execute_operations"] += len(params_list)
+            
+            # Use transaction for consistency and rollback on failure
+            operations = []
+            for params in params_list:
+                operations.append({
+                    "operation": stmt_type,
+                    "query": query,
+                    "params": params
+                })
+            
+            # Execute as transaction but return DbResult objects
+            transaction_results = self.execute_transaction(operations)
+            
+            # Convert transaction results to DbResult objects
+            for i, tx_result in enumerate(transaction_results):
+                if stmt_type == _FETCH_STATEMENT:
+                    data = tx_result["result"] if isinstance(tx_result["result"], list) else []
+                    results.append(DbResult(result=bool(data), rowcount=len(data), data=data))
+                else:
+                    results.append(DbResult(result=tx_result["result"], rowcount=1, data=None))
+                    
+            return results
+            
+        except Exception as e:
+            if not isinstance(e, (OperationError, TransactionError)):
+                raise OperationError(f"Execute many failed: {e}") from e
+            raise
+
+    def script(
+        self,
+        sql_script: str,
+    ) -> list[dict[str, Any]]:
+        """
+        Execute a SQL script containing multiple statements.
+        
+        This is an alias for batch() with a more descriptive name for script execution.
+        Useful for running migration scripts, setup scripts, or any multi-statement SQL.
+        
+        Args:
+            sql_script: SQL script containing multiple statements separated by semicolons
+            
+        Returns:
+            List of dicts, each containing 'statement', 'operation', and 'result' (DbResult)
+            
+        Raises:
+            TransactionError: If the script execution fails
+            
+        Example:
+            # Run a setup script
+            setup_sql = '''
+                CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT);
+                CREATE INDEX idx_users_name ON users(name);
+                INSERT INTO users (name) VALUES ('Admin');
+            '''
+            results = db.script(setup_sql)
+        """
+        return self.batch(sql_script)
+
+    @contextmanager
+    def transaction(self) -> Generator[Any, None, None]:
+        """
+        Context manager for explicit transaction control.
+        
+        Provides a more Pythonic way to handle transactions. All operations
+        within the context will be executed as a single transaction.
+        
+        Note: This is a convenience wrapper around execute_transaction() for
+        cases where you want to mix execute/fetch calls in a transaction.
+        For better performance with many operations, use execute_transaction() directly.
+        
+        Yields:
+            A transaction proxy that collects operations and executes them as a batch
+            
+        Raises:
+            TransactionError: If any operation within the transaction fails
+            
+        Example:
+            with db.transaction() as tx:
+                tx.execute("INSERT INTO users (name) VALUES (:name)", {"name": "Alice"})
+                tx.execute("INSERT INTO posts (user_id, title) VALUES (1, :title)", 
+                          {"title": "Hello World"})
+                # Both operations committed together, or both rolled back on error
+        """
+        transaction_proxy = _TransactionProxy(self)
+        try:
+            yield transaction_proxy
+            # Execute all collected operations as a transaction
+            if transaction_proxy._operations:
+                self.execute_transaction(transaction_proxy._operations)
+        except Exception as e:
+            raise TransactionError(f"Transaction failed: {e}") from e
 
     def execute_transaction(
         self,
@@ -576,9 +761,9 @@ class DbEngine:
                 - 'query': SQL statement
                 - 'params': Parameters (optional)
         Returns:
-            List of result dicts for each operation (with 'type', 'result', etc.)
+            List of result dicts for each operation (with 'operation', 'result', etc.)
         Raises:
-            DbOperationError: If the transaction fails or an invalid operation type is provided
+            TransactionError: If the transaction fails or an invalid operation type is provided
         """
         # Execute provided operations inside a single transaction synchronously
         with self._connection_lock:
@@ -590,17 +775,17 @@ class DbEngine:
                     query = operation.get("query")
                     params = operation.get("params")
                     if op_type not in [_FETCH_STATEMENT, _EXECUTE_STATEMENT] or not query:
-                        raise DbOperationError("Invalid operation in transaction")
+                        raise TransactionError("Invalid operation in transaction")
 
+                    # Use internal _execute_single_request for consistency
+                    db_result = self._execute_single_request(op_type, query, params, auto_commit=False)
+                    
+                    # Map to existing outward shape for compatibility
                     if op_type == _FETCH_STATEMENT:
-                        stmt = self._get_prepared_statement(query)
-                        res = conn.execute(stmt, params or {})
-                        rows = [dict(row._mapping) for row in res.fetchall()]
-                        results.append({"operation": _FETCH_STATEMENT, "result": rows})
+                        results.append({"operation": _FETCH_STATEMENT, "result": db_result.data})
                     else:
-                        stmt = self._get_prepared_statement(query)
-                        conn.execute(stmt, params or {})
                         results.append({"operation": _EXECUTE_STATEMENT, "result": True})
+                        
                 conn.commit()
                 return results
             except Exception as e:
@@ -608,7 +793,7 @@ class DbEngine:
                     conn.rollback()
                 except Exception:
                     pass
-                raise DbOperationError(_ERROR_TRANSACTION_FAILED.format(e)) from e
+                raise TransactionError(_ERROR_TRANSACTION_FAILED.format(e)) from e
 
     @contextmanager
     def get_raw_connection(self) -> Generator[Connection, None, None]:
@@ -630,7 +815,7 @@ class DbEngine:
         """
         Perform a VACUUM operation to reclaim space and optimize the database.
         Raises:
-            DbOperationError: If the VACUUM operation fails
+            MaintenanceError: If the VACUUM operation fails
         """
         try:
             with self._connection_lock:
@@ -638,7 +823,7 @@ class DbEngine:
                 conn.execute(text(_SQL_VACUUM))
                 conn.commit()
         except Exception as e:
-            raise DbOperationError(_ERROR_VACUUM_FAILED.format(e)) from e
+            raise MaintenanceError(_ERROR_VACUUM_FAILED.format(e)) from e
 
     def analyze(
         self,
@@ -650,7 +835,7 @@ class DbEngine:
         Args:
             table_name: Specific table to analyze, or None for all tables
         Raises:
-            DbOperationError: If the ANALYZE operation fails
+            MaintenanceError: If the ANALYZE operation fails
         """
         try:
             with self._connection_lock:
@@ -659,7 +844,7 @@ class DbEngine:
                 conn.execute(text(analyze_sql))
                 conn.commit()
         except Exception as e:
-            raise DbOperationError(_ERROR_ANALYZE_FAILED.format(e)) from e
+            raise MaintenanceError(_ERROR_ANALYZE_FAILED.format(e)) from e
 
     def integrity_check(self) -> list[str]:
         """
@@ -667,7 +852,7 @@ class DbEngine:
         Returns:
             List of integrity issues found (empty list if no issues)
         Raises:
-            DbOperationError: If the integrity check fails
+            MaintenanceError: If the integrity check fails
         """
         def extract_scalar(row):
             if isinstance(row, dict):
@@ -684,14 +869,14 @@ class DbEngine:
                 issues = [extract_scalar(row) for row in rows if extract_scalar(row) != "ok"]
                 return issues
         except Exception as e:
-            raise DbOperationError(_ERROR_INTEGRITY_CHECK_FAILED.format(e)) from e
+            raise MaintenanceError(_ERROR_INTEGRITY_CHECK_FAILED.format(e)) from e
 
     def optimize(self) -> None:
         """
         Perform database optimization operations.
         This method combines VACUUM and ANALYZE operations to optimize the database for better performance.
         Raises:
-            DbOperationError: If the optimization operation fails
+            MaintenanceError: If the optimization operation fails
         """
         # Execute VACUUM and ANALYZE sequentially using the queue system
         self.vacuum()

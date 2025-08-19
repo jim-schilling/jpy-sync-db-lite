@@ -26,8 +26,7 @@ except ImportError:
     PSUTIL_AVAILABLE = False
     psutil = None
 
-# Add parent directory to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
 
 from jpy_sync_db_lite.db_engine import DbEngine
 
@@ -507,12 +506,7 @@ class TestDbEnginePerformance(unittest.TestCase):
         best_throughput = max(r['throughput'] for r in results_by_size.values())
         self.assertGreater(best_throughput, 50)  # At least 50 ops/sec for transactions
 
-    @pytest.mark.slow
-    def test_worker_scaling(self):
-        """Test performance with different worker configurations."""
-        # This test is no longer applicable since workers are not configurable
-        # The system always uses 1 worker thread
-        pass
+
 
     def test_overall_performance_summary(self):
         """Generate overall performance summary."""
