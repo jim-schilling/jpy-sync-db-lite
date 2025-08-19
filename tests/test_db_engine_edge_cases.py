@@ -9,15 +9,14 @@ This module is licensed under the MIT License.
 """
 
 import os
-import queue
 import tempfile
 import threading
 import time
 import unittest
 import pytest
 
-from jpy_sync_db_lite.db_engine import DbEngine, DbOperationError, SQLiteError, DbResult
-from jpy_sync_db_lite.db_request import DbRequest
+from jpy_sync_db_lite.db_engine import DbEngine, DbResult
+from jpy_sync_db_lite.errors import OperationError
 
 
 class TestDbEngineEdgeCases(unittest.TestCase):
@@ -50,8 +49,6 @@ class TestDbEngineEdgeCases(unittest.TestCase):
         db = DbEngine(self.database_url)
 
         # Create request without response queue
-        request = DbRequest('execute', 'SELECT 1')
-
         # This should not raise an exception - use execute method instead of direct queue access
         result = db.execute('SELECT 1')
         self.assertTrue(result.result)
@@ -97,68 +94,6 @@ class TestDbEngineEdgeCases(unittest.TestCase):
                     os.unlink(temp_path)
                 except PermissionError:
                     pass
-
-
-class TestDbRequest(unittest.TestCase):
-    """Test cases for DbRequest class."""
-
-    @pytest.mark.unit
-    def test_db_request_creation(self):
-        """Test DbRequest object creation with various parameters."""
-        from jpy_sync_db_lite.db_request import DbRequest
-
-        # Test basic creation
-        request = DbRequest('fetch', 'SELECT 1')
-        self.assertEqual(request.operation, 'fetch')
-        self.assertEqual(request.query, 'SELECT 1')
-        self.assertIsNone(request.params)
-        self.assertIsNone(request.response_queue)
-        self.assertIsInstance(request.timestamp, float)
-        self.assertIsNone(request.batch_id)
-
-        # Test with all parameters
-        response_queue = queue.Queue()
-        request = DbRequest(
-            operation='execute',
-            query='INSERT INTO test VALUES (:id)',
-            params={'id': 1},
-            response_queue=response_queue,
-            batch_id='test_batch'
-        )
-        self.assertEqual(request.operation, 'execute')
-        self.assertEqual(request.query, 'INSERT INTO test VALUES (:id)')
-        self.assertEqual(request.params, {'id': 1})
-        self.assertEqual(request.response_queue, response_queue)
-        self.assertEqual(request.batch_id, 'test_batch')
-
-    @pytest.mark.unit
-    def test_db_request_timestamp(self):
-        """Test that DbRequest timestamps are properly set."""
-        import time
-
-        from jpy_sync_db_lite.db_request import DbRequest
-
-        before = time.time()
-        request = DbRequest('fetch', 'SELECT 1')
-        after = time.time()
-
-        self.assertGreaterEqual(request.timestamp, before)
-        self.assertLessEqual(request.timestamp, after)
-
-    @pytest.mark.unit
-    def test_db_request_with_list_params(self):
-        """Test DbRequest with list parameters for bulk operations."""
-        from jpy_sync_db_lite.db_request import DbRequest
-
-        params_list = [
-            {'name': 'Alice', 'email': 'alice@example.com'},
-            {'name': 'Bob', 'email': 'bob@example.com'}
-        ]
-
-        request = DbRequest('execute', 'INSERT INTO users (name, email) VALUES (:name, :email)', params=params_list)
-        self.assertEqual(request.operation, 'execute')
-        self.assertEqual(request.params, params_list)
-        self.assertIsInstance(request.params, list)
 
 
 if __name__ == '__main__':

@@ -77,6 +77,22 @@ class TestRemoveSqlComments:
         assert "'John -- This is not a comment'" in result
         assert "'/* This is also not a comment */'" in result
 
+    def test_comments_in_string_literals_complex(self):
+        """Test that complex comment-like patterns in string literals are preserved."""
+        sql = """
+        INSERT INTO messages (content) VALUES 
+            ('This contains /* not a comment */ text'),
+            ('This contains -- not a comment text'),
+            ('Mixed /* comment */ and -- comment text'),
+            ('Nested /* outer /* inner */ outer */ text')
+        """
+        result = remove_sql_comments(sql)
+        # All string literals should be preserved
+        assert "'This contains /* not a comment */ text'" in result
+        assert "'This contains -- not a comment text'" in result
+        assert "'Mixed /* comment */ and -- comment text'" in result
+        assert "'Nested /* outer /* inner */ outer */ text'" in result
+
     def test_mixed_comments(self):
         """Test removing mixed single-line and multi-line comments."""
         sql = """
@@ -244,6 +260,120 @@ class TestDetectStatementType:
         result4 = detect_statement_type("INSERT INTO users VALUES (1)")
         assert result3 == result4 == EXECUTE_STATEMENT
 
+    def test_complex_cte_multiple(self):
+        """Test detecting complex CTE with multiple CTEs separated by commas."""
+        sql = """
+        WITH 
+        active_users AS (
+            SELECT id, name FROM users WHERE active = 1
+        ),
+        user_stats AS (
+            SELECT user_id, COUNT(*) as post_count 
+            FROM posts 
+            GROUP BY user_id
+        ),
+        user_emails AS (
+            SELECT user_id, email FROM emails WHERE verified = 1
+        )
+        SELECT u.name, s.post_count, e.email
+        FROM active_users u 
+        JOIN user_stats s ON u.id = s.user_id
+        JOIN user_emails e ON u.id = e.user_id
+        """
+        result = detect_statement_type(sql)
+        assert result == FETCH_STATEMENT
+
+    def test_cte_with_values(self):
+        """Test detecting CTE whose main statement after WITH is VALUES."""
+        sql = """
+        WITH sample_data AS (
+            SELECT 1 as id, 'Alice' as name
+            UNION ALL
+            SELECT 2 as id, 'Bob' as name
+        )
+        VALUES (1, 'Alice'), (2, 'Bob')
+        """
+        result = detect_statement_type(sql)
+        assert result == FETCH_STATEMENT
+
+    def test_cte_with_pragma(self):
+        """Test detecting CTE followed by PRAGMA statement."""
+        sql = """
+        WITH table_info AS (
+            SELECT 'users' as table_name
+        )
+        PRAGMA table_info(users)
+        """
+        result = detect_statement_type(sql)
+        assert result == FETCH_STATEMENT
+
+    def test_cte_with_explain(self):
+        """Test detecting CTE followed by EXPLAIN statement."""
+        sql = """
+        WITH query_plan AS (
+            SELECT 'SELECT * FROM users' as query
+        )
+        EXPLAIN SELECT * FROM users
+        """
+        result = detect_statement_type(sql)
+        assert result == FETCH_STATEMENT
+
+    def test_describe_variants(self):
+        """Test detecting DESCRIBE and DESC statement variants."""
+        # Test DESCRIBE
+        result1 = detect_statement_type("DESCRIBE users")
+        assert result1 == FETCH_STATEMENT
+        
+        # Test DESC
+        result2 = detect_statement_type("DESC users")
+        assert result2 == FETCH_STATEMENT
+        
+        # Test with table name
+        result3 = detect_statement_type("DESCRIBE database.users")
+        assert result3 == FETCH_STATEMENT
+
+    def test_show_statement_variants(self):
+        """Test detecting SHOW statement variants."""
+        # Test SHOW TABLES
+        result1 = detect_statement_type("SHOW TABLES")
+        assert result1 == FETCH_STATEMENT
+        
+        # Test SHOW DATABASES
+        result2 = detect_statement_type("SHOW DATABASES")
+        assert result2 == FETCH_STATEMENT
+        
+        # Test SHOW CREATE TABLE
+        result3 = detect_statement_type("SHOW CREATE TABLE users")
+        assert result3 == FETCH_STATEMENT
+
+    def test_pragma_statement_variants(self):
+        """Test detecting PRAGMA statement variants."""
+        # Test PRAGMA table_info
+        result1 = detect_statement_type("PRAGMA table_info(users)")
+        assert result1 == FETCH_STATEMENT
+        
+        # Test PRAGMA journal_mode
+        result2 = detect_statement_type("PRAGMA journal_mode")
+        assert result2 == FETCH_STATEMENT
+        
+        # Test PRAGMA cache_size
+        result3 = detect_statement_type("PRAGMA cache_size")
+        assert result3 == FETCH_STATEMENT
+
+    def test_values_statement_variants(self):
+        """Test detecting VALUES statement variants."""
+        # Test simple VALUES
+        result1 = detect_statement_type("VALUES (1, 'Alice')")
+        assert result1 == FETCH_STATEMENT
+        
+        # Test multiple VALUES
+        result2 = detect_statement_type("VALUES (1, 'Alice'), (2, 'Bob')")
+        assert result2 == FETCH_STATEMENT
+        
+        # Test VALUES with different data types
+        result3 = detect_statement_type("VALUES (1, 'text', 3.14, NULL)")
+        assert result3 == FETCH_STATEMENT
+
 
 class TestParseSqlStatements:
     """Test SQL statement parsing functionality."""
@@ -357,6 +487,37 @@ class TestParseSqlStatements:
         assert len(result) == 2
         assert "INSERT INTO users" in result[0]
         assert "SELECT * FROM users" in result[1]
+
+    def test_mixed_semicolons_filtered(self):
+        """Test that mixed semicolons and lone semicolons are filtered out."""
+        sql = "SELECT * FROM users;;;INSERT INTO users (name) VALUES ('John');;;"
+        result = parse_sql_statements(sql)
+        assert len(result) == 2
+        assert result[0] == "SELECT * FROM users;"
+        assert result[1] == "INSERT INTO users (name) VALUES ('John');"
+
+    def test_strip_semicolon_edge_cases(self):
+        """Test strip_semicolon behavior with edge cases."""
+        # Test with statements that have semicolons
+        sql = "SELECT * FROM users;INSERT INTO users (name) VALUES ('John');"
+        result = parse_sql_statements(sql, strip_semicolon=True)
+        assert len(result) == 2
+        assert result[0] == "SELECT * FROM users"
+        assert result[1] == "INSERT INTO users (name) VALUES ('John')"
+
+    def test_comment_only_and_whitespace_filtered(self):
+        """Test that comment-only and whitespace-only blocks are filtered."""
+        sql = """
+        -- Comment only
+        SELECT * FROM users;
+        /* Another comment */
+        INSERT INTO users (name) VALUES ('John');
+        -- Final comment
+        """
+        result = parse_sql_statements(sql)
+        assert len(result) == 2
+        assert "SELECT * FROM users" in result[0]
+        assert "INSERT INTO users (name) VALUES ('John')" in result[1]
 
 
 class TestSplitSqlFile:
@@ -479,6 +640,20 @@ class TestSplitSqlFile:
             assert result == []
         finally:
             os.unlink(temp_file)
+
+    def test_split_sql_file_directory_error(self):
+        """Test splitting with directory path (should raise SqlFileError)."""
+        # Create a temporary directory
+        temp_dir = tempfile.mkdtemp()
+        try:
+            with pytest.raises(SqlFileError):
+                split_sql_file(Path(temp_dir))
+        finally:
+            # Clean up
+            try:
+                os.rmdir(temp_dir)
+            except OSError:
+                pass
 
     def test_split_sql_file_complex_statements(self):
         """Test splitting SQL file with complex statements."""

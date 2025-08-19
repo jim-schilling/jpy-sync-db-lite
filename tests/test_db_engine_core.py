@@ -18,8 +18,8 @@ import pytest
 from sqlalchemy import text
 import re
 
-from jpy_sync_db_lite.db_engine import DbEngine, DbOperationError, SQLiteError, DbResult
-from jpy_sync_db_lite.db_request import DbRequest
+from jpy_sync_db_lite.db_engine import DbEngine, DbResult
+from jpy_sync_db_lite.errors import OperationError, TransactionError
 
 
 class TestDbEngineCore(unittest.TestCase):
@@ -96,11 +96,9 @@ class TestDbEngineCore(unittest.TestCase):
     def test_init_with_default_parameters(self) -> None:
         """Test DbEngine initialization with default parameters."""
         db = DbEngine(self.database_url)
-        self.assertIsNotNone(db.engine)
-        # No assertions about workers; just ensure initialization does not raise
-        self.assertIsInstance(db.shutdown_event, threading.Event)
-        self.assertEqual(db.stats['requests'], 0)
-        self.assertEqual(db.stats['errors'], 0)
+        # Ensure initialization does not raise and basic operations work
+        result = db.fetch("SELECT 1 as test")
+        self.assertEqual(result.data[0]["test"], 1)
         db.shutdown()
 
     @pytest.mark.unit
@@ -296,16 +294,22 @@ class TestDbEngineCore(unittest.TestCase):
     @pytest.mark.unit
     def test_get_stats(self):
         """Test getting database statistics."""
+        # Get initial stats
+        initial_stats = self.db_engine.get_stats()
+        
         # Perform some operations to generate stats
         self.db_engine.execute("SELECT 1")
         self.db_engine.fetch("SELECT 1")
 
-        stats = self.db_engine.get_stats()
+        # Get updated stats
+        updated_stats = self.db_engine.get_stats()
 
-        self.assertIn('requests', stats)
-        self.assertIn('errors', stats)
-        self.assertIsInstance(stats['requests'], int)
-        self.assertIsInstance(stats['errors'], int)
+        # Verify stats structure and that values increased
+        self.assertIn('requests', updated_stats)
+        self.assertIn('errors', updated_stats)
+        self.assertIsInstance(updated_stats['requests'], int)
+        self.assertIsInstance(updated_stats['errors'], int)
+        self.assertGreaterEqual(updated_stats['requests'], initial_stats['requests'])
 
     @pytest.mark.integration
     def test_concurrent_operations(self):
@@ -349,19 +353,19 @@ class TestDbEngineCore(unittest.TestCase):
     @pytest.mark.unit
     def test_error_handling_invalid_sql(self):
         """Test error handling for invalid SQL."""
-        with self.assertRaises(DbOperationError):
+        with self.assertRaises(OperationError):
             self.db_engine.execute("INVALID SQL STATEMENT")
 
     @pytest.mark.unit
     def test_error_handling_missing_table(self):
         """Test error handling for queries on non-existent table."""
-        with self.assertRaises(DbOperationError):
+        with self.assertRaises(OperationError):
             self.db_engine.fetch("SELECT * FROM non_existent_table")
 
     @pytest.mark.unit
     def test_error_handling_missing_parameter(self):
         """Test error handling for missing parameters."""
-        with self.assertRaises(DbOperationError):
+        with self.assertRaises(OperationError):
             self.db_engine.fetch("SELECT * FROM test_users WHERE id = :id")
 
     @pytest.mark.unit

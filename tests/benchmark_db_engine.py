@@ -95,7 +95,7 @@ class DbEngineBenchmark:
 
         end_time = time.time()
         total_time = end_time - start_time
-        throughput = num_operations / total_time
+        throughput = num_operations / total_time if total_time > 0 else float('inf')
 
         return {
             'operation': 'single_insert',
@@ -213,7 +213,7 @@ class DbEngineBenchmark:
 
             end_time = time.time()
             total_time = end_time - start_time
-            throughput = num_operations / total_time
+            throughput = num_operations / total_time if total_time > 0 else float('inf')
 
             results[query_name] = {
                 'query': query,
@@ -259,7 +259,7 @@ class DbEngineBenchmark:
 
         end_time = time.time()
         total_time = end_time - start_time
-        throughput = num_operations / total_time
+        throughput = num_operations / total_time if total_time > 0 else float('inf')
 
         return {
             'operation': 'connection_performance',

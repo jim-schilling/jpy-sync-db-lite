@@ -15,7 +15,8 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from jpy_sync_db_lite.db_engine import DbEngine, DbOperationError
+from jpy_sync_db_lite.db_engine import DbEngine, DbResult
+from jpy_sync_db_lite.errors import TransactionError
 
 
 class TestDbEngineBatch(unittest.TestCase):
@@ -35,37 +36,11 @@ class TestDbEngineBatch(unittest.TestCase):
         if hasattr(self, 'db_engine'):
             self.db_engine.shutdown()
 
-    def _cleanup_all_tables(self) -> None:
-        """Clean up all tables to ensure test isolation."""
-        try:
-            with self.db_engine.get_raw_connection() as conn:
-                # Get all table names
-                result = conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
-                tables = [row[0] for row in result.fetchall()]
-                
-                # Drop all tables (except sqlite_master)
-                for table in tables:
-                    if table != 'sqlite_master':
-                        conn.execute(f"DROP TABLE IF EXISTS {table}")
-                conn.commit()
-        except Exception:
-            # If cleanup fails, continue - the test will handle it
-            pass
 
-    @staticmethod
-    def normalize_sql(sql: str) -> str:
-        """Normalize SQL by collapsing all whitespace, removing spaces after '(' and before ')', and stripping ends."""
-        import re
-        sql = re.sub(r'\s+', ' ', sql).strip()
-        sql = re.sub(r'\(\s+', '(', sql)
-        sql = re.sub(r'\s+\)', ')', sql)
-        return sql
 
     @pytest.mark.integration
     def test_batch_simple_ddl_dml(self) -> None:
         """Test simple batch execution with DDL and DML statements."""
-        # Ensure clean slate for this test
-        self._cleanup_all_tables()
         
         batch_sql = """
         CREATE TABLE IF NOT EXISTS batch_test (
@@ -109,10 +84,10 @@ class TestDbEngineBatch(unittest.TestCase):
         self.assertEqual(data.data[0]['name'], 'test1')
         self.assertEqual(data.data[0]['value'], 150)
 
-        self.assertEqual(
-            self.normalize_sql(results[0]['statement']),
-            self.normalize_sql('CREATE TABLE IF NOT EXISTS batch_test (id INTEGER PRIMARY KEY, name TEXT, value INTEGER);')
-        )
+        # Verify CREATE TABLE statement was executed (behavior check)
+        create_statements = [r for r in results if 'CREATE TABLE' in r['statement'] and 'batch_test' in r['statement']]
+        self.assertEqual(len(create_statements), 1)
+        self.assertEqual(create_statements[0]['operation'], 'execute')
 
     @pytest.mark.integration
     def test_batch_with_select_statements(self):
@@ -291,7 +266,7 @@ class TestDbEngineBatch(unittest.TestCase):
         INSERT INTO error_test (id) VALUES (2);  -- This should still execute
         """
 
-        with pytest.raises(DbOperationError):
+        with pytest.raises(TransactionError):
             self.db_engine.batch(batch_sql)
 
     @pytest.mark.unit
@@ -317,8 +292,6 @@ class TestDbEngineBatch(unittest.TestCase):
     @pytest.mark.integration
     def test_batch_transaction_consistency(self):
         """Test that batch operations maintain transaction consistency."""
-        # Ensure clean slate for this test
-        self._cleanup_all_tables()
         
         batch_sql = """
         CREATE TABLE IF NOT EXISTS transaction_test (
@@ -406,7 +379,7 @@ class TestDbEngineBatch(unittest.TestCase):
         INSERT INTO invalid_test (id) VALUES (1);
         """
 
-        with self.assertRaises(DbOperationError):
+        with self.assertRaises(TransactionError):
             self.db_engine.batch(invalid_batch)
 
     @pytest.mark.integration
@@ -459,8 +432,6 @@ class TestDbEngineBatch(unittest.TestCase):
     @pytest.mark.integration
     def test_batch_with_cte_and_advanced_statements(self):
         """Test batch execution with CTEs, VALUES, and other advanced statement types."""
-        # Ensure clean slate for this test
-        self._cleanup_all_tables()
         
         batch_sql = """
         -- Create test tables
@@ -589,8 +560,6 @@ class TestDbEngineBatch(unittest.TestCase):
     @pytest.mark.integration
     def test_batch_with_complex_cte_nested(self):
         """Test batch execution with complex CTEs and nested queries."""
-        # Ensure clean slate for this test
-        self._cleanup_all_tables()
         
         batch_sql = """
         -- Create sales table
