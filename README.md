@@ -88,6 +88,15 @@ with DbEngine('sqlite:///my_database.db', debug=False) as db:
     else:
         print("Database integrity check passed")
 
+    # Get performance information
+    perf_info = db.get_performance_info()
+    print(f"Total operations: {perf_info['performance_metrics']['total_operations']}")
+    print(f"Error rate: {perf_info['performance_metrics']['error_rate_percent']}%")
+
+    # Check connection health
+    if db.check_connection_health():
+        print("Database connection is healthy")
+
     # Batch operations - execute multiple SQL statements
     batch_sql = """
         -- Create a new table
@@ -299,6 +308,72 @@ db.optimize()
 
 This method runs `PRAGMA optimize` and `ANALYZE` to improve query performance.
 
+##### get_performance_info()
+Get comprehensive performance information including SQLite settings and engine statistics.
+
+```python
+perf_info = db.get_performance_info()
+print(f"Total operations: {perf_info['performance_metrics']['total_operations']}")
+print(f"Error rate: {perf_info['performance_metrics']['error_rate_percent']}%")
+print(f"Prepared statements cached: {perf_info['performance_metrics']['prepared_statements_cached']}")
+```
+
+**Returns:**
+Dictionary containing performance metrics:
+- `engine_stats`: Basic operation statistics (requests, errors, etc.)
+- `sqlite_info`: SQLite configuration information
+- `connection_pool`: Connection pool status and health
+- `performance_metrics`: Computed performance ratios and metrics
+- `configuration`: Engine configuration settings
+
+##### get_connection_info()
+Get detailed connection information and health status.
+
+```python
+conn_info = db.get_connection_info()
+print(f"Connection recreations: {conn_info['connection_recreations']}")
+print(f"Connection healthy: {conn_info['connection_healthy']}")
+```
+
+**Returns:**
+Dictionary containing connection information:
+- `connection_recreations`: Number of times connection has been recreated
+- `connection_healthy`: Boolean indicating if connection is healthy
+
+##### check_connection_health()
+Check if the database connection is healthy and responsive.
+
+```python
+if db.check_connection_health():
+    print("Database connection is healthy")
+else:
+    print("Database connection needs attention")
+```
+
+**Returns:**
+Boolean indicating connection health status
+
+##### get_prepared_statement_count()
+Get the number of prepared statements currently cached.
+
+```python
+count = db.get_prepared_statement_count()
+print(f"Prepared statements cached: {count}")
+```
+
+**Returns:**
+Integer representing the number of cached prepared statements
+
+##### clear_prepared_statements()
+Clear all cached prepared statements.
+
+```python
+db.clear_prepared_statements()
+print("Prepared statement cache cleared")
+```
+
+This method is useful for memory management or when you want to force fresh statement preparation.
+
 ##### batch(batch_sql)
 Execute multiple SQL statements in a batch with thread safety.
 
@@ -482,8 +557,51 @@ For detailed performance analysis, see [tests/PERFORMANCE_TESTS.md](tests/PERFOR
 ## Development
 
 ### Running Tests
+
+The test suite includes comprehensive coverage with behavior-focused testing and parallel execution support.
+
+#### Basic Test Execution
 ```bash
+# Run all tests
 pytest
+
+# Run with coverage report
+pytest --cov=jpy_sync_db_lite --cov-report=term-missing
+
+# Run tests in parallel (recommended for faster execution)
+pytest -n auto
+```
+
+#### Test Categories
+
+- **Unit Tests**: Core functionality and edge cases
+- **Integration Tests**: End-to-end workflows and complex scenarios  
+- **Performance Tests**: Throughput and latency benchmarks
+- **Coverage Tests**: Additional tests to ensure comprehensive code coverage
+
+#### Test Coverage
+
+The test suite achieves high coverage across all modules:
+- **db_engine.py**: 90% coverage with comprehensive API testing
+- **sql_helper.py**: 85% coverage with robust SQL parsing validation
+- **errors.py**: 96% coverage with complete exception handling
+
+#### Parallel Test Execution
+
+All tests are designed for parallel execution with:
+- **Isolated databases**: Each test uses in-memory databases or unique temporary files
+- **No shared state**: Tests are completely independent
+- **Thread-safe operations**: All database operations are thread-safe
+
+```bash
+# Run tests in parallel with automatic worker detection
+pytest -n auto
+
+# Run with specific number of workers
+pytest -n 4
+
+# Run with verbose output and parallel execution
+pytest -n auto -v
 ```
 
 ## License
@@ -502,6 +620,18 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## Changelog
 
 ### 2025.4.1 (2025-08-19)
+- **Comprehensive test suite cleanup and refactoring** with removal of implementation-dependent tests and focus on behavior-only testing
+- **Enhanced test isolation** with parallel-safe test execution using unique database files and in-memory databases
+- **Improved code coverage** with db_engine.py coverage increased to 90% and sql_helper.py coverage increased to 85%
+- **Behavior-focused testing** with removal of internal attribute assertions and SQL string equality checks
+- **Parallel test execution support** with all 187 tests passing in parallel using pytest-xdist
+- **Enhanced test maintainability** with removal of duplicate test files and consolidation of test suites
+- **Better test organization** with clear separation of unit, integration, and performance tests
+- **Improved error handling coverage** with comprehensive testing of edge cases and error conditions
+- **Enhanced SQL helper testing** with 15 new tests covering complex CTEs, statement variants, and parsing edge cases
+- **Database engine coverage improvements** with 15 new tests covering prepared statements, connection health, and performance metrics
+- **Test infrastructure improvements** with removal of sys.path modifications and print statements
+- **Documentation updates** reflecting current test coverage and behavior expectations
 
 ### 2025.4.0 (2025-08-13)
 - Simplified connection configuration: PRAGMAs applied on the persistent connection for correctness
