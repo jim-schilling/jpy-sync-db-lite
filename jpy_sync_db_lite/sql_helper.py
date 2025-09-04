@@ -38,7 +38,7 @@ EXECUTE_STATEMENT: str = "execute"
 FETCH_STATEMENT: str = "fetch"
 
 
-def remove_sql_comments(sql_text: str) -> str:
+def remove_sql_comments(sql_text: str | None) -> str | None:
     """
     Remove SQL comments from a SQL string using sqlparse.
     Handles:
@@ -286,7 +286,7 @@ def detect_statement_type(sql: str) -> str:
 
 
 def parse_sql_statements(
-    sql_text: str,
+    sql_text: str | None,
     *,
     strip_semicolon: bool = False,
 ) -> list[str]:
