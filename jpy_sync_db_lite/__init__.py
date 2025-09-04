@@ -10,22 +10,20 @@ This module is licensed under the MIT License.
 
 from jpy_sync_db_lite.db_engine import DbEngine, DbResult
 from jpy_sync_db_lite.errors import (
-    JpySyncDbLiteError,
     DatabaseError,
-    ConnectionError,
-    TransactionError,
-    OperationError,
+    JpySyncDbLiteError,
     MaintenanceError,
+    OperationError,
     SqlFileError,
     SqlValidationError,
+    TransactionError,
 )
 
 __all__ = [
     "DbEngine",
     "DbResult",
     "JpySyncDbLiteError",
-    "DatabaseError", 
-    "ConnectionError",
+    "DatabaseError",
     "TransactionError",
     "OperationError",
     "MaintenanceError",

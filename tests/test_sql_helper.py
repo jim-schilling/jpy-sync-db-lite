@@ -4,25 +4,24 @@ Unit tests for SQL Helper module.
 Tests SQL parsing, statement detection, and file processing functionality using actual objects.
 """
 
-import tempfile
 import os
+import tempfile
 from pathlib import Path
 
 import pytest
 
+from jpy_sync_db_lite.errors import SqlFileError, SqlValidationError
 from jpy_sync_db_lite.sql_helper import (
-    remove_sql_comments,
-    detect_statement_type,
-    parse_sql_statements,
-    split_sql_file,
-    extract_create_table_statements,
-    parse_table_columns,
-    extract_table_names,
     EXECUTE_STATEMENT,
     FETCH_STATEMENT,
+    detect_statement_type,
+    extract_create_table_statements,
+    extract_table_names,
+    parse_sql_statements,
+    parse_table_columns,
+    remove_sql_comments,
+    split_sql_file,
 )
-from jpy_sync_db_lite.errors import SqlFileError, SqlValidationError
-from tests.test_utils import TestDataBuilder, TestFileHelper
 
 
 class TestRemoveSqlComments:
@@ -257,7 +256,7 @@ class TestDetectStatementType:
         """Test DCL and other statement types are treated as execute."""
         statements = [
             "GRANT SELECT ON table1 TO user1",
-            "REVOKE INSERT ON table1 FROM user1", 
+            "REVOKE INSERT ON table1 FROM user1",
             "TRUNCATE TABLE users",
             "ANALYZE table1",
             "VACUUM",
@@ -419,9 +418,9 @@ class TestSplitSqlFile:
             SELECT * FROM users;
             """)
             temp_file = f.name
-        
+
         yield temp_file
-        
+
         # Cleanup
         try:
             os.unlink(temp_file)
@@ -484,7 +483,7 @@ class TestSplitSqlFile:
         with tempfile.NamedTemporaryFile(mode='w', suffix='.sql', delete=False) as f:
             f.write("")
             temp_file = f.name
-        
+
         try:
             result = split_sql_file(temp_file)
             assert result == []
@@ -500,7 +499,7 @@ class TestSplitSqlFile:
                that spans multiple lines */
             """)
             temp_file = f.name
-        
+
         try:
             result = split_sql_file(temp_file)
             assert result == []
@@ -512,7 +511,7 @@ class TestSplitSqlFile:
         with tempfile.NamedTemporaryFile(mode='w', suffix='.sql', delete=False) as f:
             f.write("   \n\t  \n  ")
             temp_file = f.name
-        
+
         try:
             result = split_sql_file(temp_file)
             assert result == []
@@ -551,7 +550,7 @@ class TestSplitSqlFile:
             HAVING COUNT(p.id) > 0;
             """)
             temp_file = f.name
-        
+
         try:
             result = split_sql_file(temp_file)
             assert len(result) == 5
@@ -575,7 +574,7 @@ class TestSplitSqlFile:
             SELECT * FROM messages WHERE content LIKE '%;%';
             """)
             temp_file = f.name
-        
+
         try:
             result = split_sql_file(temp_file)
             assert len(result) == 2
@@ -653,12 +652,12 @@ class TestExtractCreateTableStatements:
         """
         result = extract_create_table_statements(sql)
         assert len(result) == 2
-        
+
         # Check first table
         table_names = [name for name, _ in result]
         assert "users" in table_names
         assert "posts" in table_names
-        
+
         # Check table bodies
         table_bodies = [body for _, body in result]
         assert any("id INTEGER PRIMARY KEY" in body and "name TEXT NOT NULL" in body for body in table_bodies)
@@ -803,7 +802,7 @@ class TestParseTableColumns:
         result = parse_table_columns(table_body)
         assert result == {
             "id": "INTEGER",
-            "name": "TEXT", 
+            "name": "TEXT",
             "email": "TEXT"
         }
 
@@ -1113,18 +1112,18 @@ class TestSqlHelperIntegration:
         FROM users u 
         JOIN posts p ON u.id = p.user_id;
         """
-        
+
         # Test statement parsing
         statements = parse_sql_statements(sql_content)
         assert len(statements) == 5
-        
+
         # Test CREATE TABLE extraction
         create_tables = extract_create_table_statements(sql_content)
         assert len(create_tables) == 2
         table_names = [name for name, _ in create_tables]
         assert "users" in table_names
         assert "posts" in table_names
-        
+
         # Test table column parsing
         users_table_body = next(body for name, body in create_tables if name == "users")
         users_columns = parse_table_columns(users_table_body)
@@ -1133,19 +1132,19 @@ class TestSqlHelperIntegration:
             "name": "TEXT",
             "email": "TEXT"
         }
-        
+
         # Test table name extraction from SELECT
         select_statement = statements[-1]
         table_names_in_select = extract_table_names(select_statement)
         assert len(table_names_in_select) == 2
         assert "users" in table_names_in_select
         assert "posts" in table_names_in_select
-        
+
         # Test statement type detection
         create_statement = statements[0]
         insert_statement = statements[2]
         select_statement = statements[4]
-        
+
         assert detect_statement_type(create_statement) == EXECUTE_STATEMENT
         assert detect_statement_type(insert_statement) == EXECUTE_STATEMENT
         assert detect_statement_type(select_statement) == FETCH_STATEMENT
@@ -1156,13 +1155,13 @@ class TestSqlHelperIntegration:
         large_sql = []
         for i in range(100):
             large_sql.append(f"INSERT INTO test_table (id, name) VALUES ({i}, 'name_{i}');")
-        
+
         sql_content = "\n".join(large_sql)
-        
+
         # Test parsing performance
         statements = parse_sql_statements(sql_content)
         assert len(statements) == 100
-        
+
         # Test table name extraction performance
         table_names = extract_table_names(statements[0])
         assert table_names == ["test_table"]
@@ -1187,11 +1186,11 @@ class TestSqlHelperIntegration:
         FROM active_users au
         WHERE au.post_count > 0
         """
-        
+
         # Test statement type detection
         statement_type = detect_statement_type(sql_content)
         assert statement_type == FETCH_STATEMENT
-        
+
         # Test table name extraction
         table_names = extract_table_names(sql_content)
         assert len(table_names) == 5
@@ -1212,11 +1211,11 @@ class TestSqlHelperIntegration:
         
         SELECT * FROM users WHERE id = :id
         """
-        
+
         # Current implementation handles malformed SQL gracefully
         create_tables = extract_create_table_statements(malformed_sql)
         assert create_tables == []  # Returns empty list for malformed CREATE TABLE
-        
+
         # Statement parsing still works for the valid parts
         statements = parse_sql_statements(malformed_sql)
         assert len(statements) == 1  # Only the CREATE TABLE statement is parsed
@@ -1229,11 +1228,11 @@ class TestSqlHelperEdgeCases:
         """Test handling of very long SQL strings."""
         # Create a very long SQL string
         long_sql = "SELECT " + ", ".join([f"column_{i}" for i in range(1000)]) + " FROM very_long_table_name"
-        
+
         # Test that it doesn't crash
         statement_type = detect_statement_type(long_sql)
         assert statement_type == FETCH_STATEMENT
-        
+
         table_names = extract_table_names(long_sql)
         assert table_names == ["very_long_table_name"]
 
@@ -1244,12 +1243,12 @@ class TestSqlHelperEdgeCases:
         WHERE name = 'José María' 
         AND description = 'Café au lait'
         """
-        
+
         # Test comment removal
         clean_sql = remove_sql_comments(sql)
         assert "José María" in clean_sql
         assert "Café au lait" in clean_sql
-        
+
         # Test table name extraction
         table_names = extract_table_names(sql)
         assert table_names == ["users"]
@@ -1261,7 +1260,7 @@ class TestSqlHelperEdgeCases:
         WHERE "column.with.dots" = 'value with spaces'
         AND "column_with_underscores" = 'value with "quotes"'
         """
-        
+
         # Test table name extraction
         with pytest.raises(SqlValidationError, match="No table names found in SQL query"):
             extract_table_names(sql)
@@ -1273,7 +1272,7 @@ class TestSqlHelperEdgeCases:
         SELECT * FROM users;
         -- Another comment-only statement
         """
-        
+
         statements = parse_sql_statements(sql)
         assert len(statements) == 1
         assert "SELECT * FROM users" in statements[0]
@@ -1286,7 +1285,7 @@ class TestSqlHelperEdgeCases:
            More outer comment */
         SELECT * FROM users;
         """
-        
+
         clean_sql = remove_sql_comments(sql)
         # Current implementation doesn't fully handle nested comments
         assert "SELECT * FROM users" in clean_sql
@@ -1302,7 +1301,7 @@ class TestSqlHelperEdgeCases:
         JOIN comments c ON p.id = c.post_id
         WHERE u.active = 1
         """
-        
+
         table_names = extract_table_names(sql)
         assert len(table_names) == 3
         assert "users" in table_names
@@ -1312,7 +1311,7 @@ class TestSqlHelperEdgeCases:
     def test_sql_with_multiple_semicolons(self):
         """Test handling of SQL with multiple semicolons."""
         sql = "SELECT * FROM users;;;INSERT INTO users (name) VALUES ('John');;;"
-        
+
         statements = parse_sql_statements(sql)
         assert len(statements) == 2
         assert "SELECT * FROM users" in statements[0]
@@ -1326,10 +1325,10 @@ class TestSqlHelperEdgeCases:
             ('This is an INSERT statement'),
             ('This is a CREATE TABLE statement');
         """
-        
+
         # Test that string literals don't interfere with parsing
         table_names = extract_table_names(sql)
         assert table_names == ["messages"]
-        
+
         statement_type = detect_statement_type(sql)
         assert statement_type == EXECUTE_STATEMENT

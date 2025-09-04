@@ -11,11 +11,12 @@ This module is licensed under the MIT License.
 import os
 import sys
 import unittest
+
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from jpy_sync_db_lite.db_engine import DbEngine, DbResult
+from jpy_sync_db_lite.db_engine import DbEngine
 from jpy_sync_db_lite.errors import TransactionError
 
 
@@ -41,7 +42,7 @@ class TestDbEngineBatch(unittest.TestCase):
     @pytest.mark.integration
     def test_batch_simple_ddl_dml(self) -> None:
         """Test simple batch execution with DDL and DML statements."""
-        
+
         batch_sql = """
         CREATE TABLE IF NOT EXISTS batch_test (
             id INTEGER PRIMARY KEY,
@@ -191,7 +192,7 @@ class TestDbEngineBatch(unittest.TestCase):
         # Verify SELECT results
         self.assertEqual(len(results[2]['result'].data), 1)  # First SELECT
         self.assertEqual(results[2]['result'].data[0]['name'], 'Test1')
-        
+
         self.assertEqual(len(results[4]['result'].data), 1)  # COUNT SELECT
         self.assertEqual(results[4]['result'].data[0]['count'], 1)
 
@@ -292,7 +293,7 @@ class TestDbEngineBatch(unittest.TestCase):
     @pytest.mark.integration
     def test_batch_transaction_consistency(self):
         """Test that batch operations maintain transaction consistency."""
-        
+
         batch_sql = """
         CREATE TABLE IF NOT EXISTS transaction_test (
             id INTEGER PRIMARY KEY,
@@ -432,7 +433,7 @@ class TestDbEngineBatch(unittest.TestCase):
     @pytest.mark.integration
     def test_batch_with_cte_and_advanced_statements(self):
         """Test batch execution with CTEs, VALUES, and other advanced statement types."""
-        
+
         batch_sql = """
         -- Create test tables
         CREATE TABLE IF NOT EXISTS departments (
@@ -560,7 +561,7 @@ class TestDbEngineBatch(unittest.TestCase):
     @pytest.mark.integration
     def test_batch_with_complex_cte_nested(self):
         """Test batch execution with complex CTEs and nested queries."""
-        
+
         batch_sql = """
         -- Create sales table
         CREATE TABLE IF NOT EXISTS sales (
@@ -595,4 +596,4 @@ class TestDbEngineBatch(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main() 
+    unittest.main()

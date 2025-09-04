@@ -13,7 +13,7 @@ from __future__ import annotations
 
 class JpySyncDbLiteError(Exception):
     """Base exception for all jpy-sync-db-lite errors."""
-    
+
     def __init__(self, message: str) -> None:
         super().__init__(message)
 
@@ -37,48 +37,46 @@ class SqlValidationError(JpySyncDbLiteError):
 
 class DatabaseError(JpySyncDbLiteError):
     """Base exception for database-related errors."""
-    
+
     def __init__(self, message: str) -> None:
         super().__init__(message)
 
 
 class ConnectionError(DatabaseError):
     """Raised for connection-related issues."""
-    
+
     def __init__(self, message: str) -> None:
         super().__init__(message)
 
 
 class TransactionError(DatabaseError):
     """Raised for transaction-related issues."""
-    
+
     def __init__(self, message: str) -> None:
         super().__init__(message)
 
 
 class OperationError(DatabaseError):
     """Raised for database operation failures."""
-    
+
     def __init__(self, message: str) -> None:
         super().__init__(message)
 
 
 class MaintenanceError(DatabaseError):
     """Raised for database maintenance operation failures."""
-    
+
     def __init__(self, message: str) -> None:
         super().__init__(message)
 
 
 __all__ = [
     "JpySyncDbLiteError",
-    "SqlFileError", 
+    "SqlFileError",
     "SqlValidationError",
     "DatabaseError",
     "ConnectionError",
-    "TransactionError", 
+    "TransactionError",
     "OperationError",
     "MaintenanceError",
 ]
-
-

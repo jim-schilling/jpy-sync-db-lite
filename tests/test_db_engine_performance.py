@@ -8,13 +8,9 @@ Please keep this header when you use this code.
 This module is licensed under the MIT License.
 """
 
-import os
 import statistics
-import sys
-import tempfile
 import time
 import unittest
-import pytest
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
@@ -81,7 +77,7 @@ class TestDbEnginePerformance(unittest.TestCase):
             }
         else:
             return {'rss_mb': 0.0, 'vms_mb': 0.0}
-    
+
     def test_single_insert_performance(self) -> None:
         """Test single insert performance."""
         num_operations = 100

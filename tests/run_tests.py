@@ -32,8 +32,8 @@ Examples:
 
 import argparse
 import os
-import sys
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -41,22 +41,22 @@ from pathlib import Path
 def run_tests(test_files, markers=None, verbose=True, coverage=True, show_output=False):
     """Run tests using pytest."""
     cmd = [sys.executable, "-m", "pytest"]
-    
+
     if verbose:
         cmd.append("-v")
-    
+
     # Add -s flag to show print statements for performance/stress tests
     if show_output:
         cmd.append("-s")
-    
+
     # Add markers if specified
     if markers:
         for marker in markers:
             cmd.extend(["-m", marker])
-    
+
     # Add test files
     cmd.extend(test_files)
-    
+
     # Add coverage options if requested
     if coverage:
         cmd.extend([
@@ -65,19 +65,19 @@ def run_tests(test_files, markers=None, verbose=True, coverage=True, show_output
             "--cov-report=html",
             "--cov-fail-under=80"
         ])
-    
+
     if verbose:
         print(f"Running command: {' '.join(cmd)}")
         print("-" * 80)
-    
+
     start_time = time.time()
     result = subprocess.run(cmd, cwd=Path(__file__).parent.parent)
     end_time = time.time()
-    
+
     if verbose:
         print("-" * 80)
         print(f"Tests completed in {end_time - start_time:.2f} seconds")
-    
+
     return result.returncode
 
 
@@ -88,47 +88,47 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__
     )
-    
+
     # Test category options
-    parser.add_argument("--fast", "-f", action="store_true", 
+    parser.add_argument("--fast", "-f", action="store_true",
                        help="Run only fast unit tests (default)")
-    parser.add_argument("--full", "-a", action="store_true", 
+    parser.add_argument("--full", "-a", action="store_true",
                        help="Run all tests")
-    parser.add_argument("--core", "-c", action="store_true", 
+    parser.add_argument("--core", "-c", action="store_true",
                        help="Run core functionality tests only")
-    parser.add_argument("--batch", "-b", action="store_true", 
+    parser.add_argument("--batch", "-b", action="store_true",
                        help="Run batch operation tests")
-    parser.add_argument("--edge", "-e", action="store_true", 
+    parser.add_argument("--edge", "-e", action="store_true",
                        help="Run edge case tests")
-    parser.add_argument("--sqlite", "-s", action="store_true", 
+    parser.add_argument("--sqlite", "-s", action="store_true",
                        help="Run SQLite-specific tests")
-    parser.add_argument("--coverage", action="store_true", 
+    parser.add_argument("--coverage", action="store_true",
                        help="Run coverage tests")
-    parser.add_argument("--performance", "-p", action="store_true", 
+    parser.add_argument("--performance", "-p", action="store_true",
                        help="Run performance tests")
-    parser.add_argument("--stress", "-t", action="store_true", 
+    parser.add_argument("--stress", "-t", action="store_true",
                        help="Run stress tests (concurrent client validation)")
-    parser.add_argument("--integration", "-i", action="store_true", 
+    parser.add_argument("--integration", "-i", action="store_true",
                        help="Run integration tests")
-    parser.add_argument("--slow", "-l", action="store_true", 
+    parser.add_argument("--slow", "-l", action="store_true",
                        help="Run slow tests")
-    parser.add_argument("--sql-helper", action="store_true", 
+    parser.add_argument("--sql-helper", action="store_true",
                        help="Run SQL helper tests only")
-    
+
     # Other options
-    parser.add_argument("--verbose", "-v", action="store_true", 
+    parser.add_argument("--verbose", "-v", action="store_true",
                        help="Run tests with verbose output")
-    parser.add_argument("--quiet", "-q", action="store_true", 
+    parser.add_argument("--quiet", "-q", action="store_true",
                        help="Run tests quietly (less output)")
-    parser.add_argument("--no-coverage", action="store_true", 
+    parser.add_argument("--no-coverage", action="store_true",
                        help="Disable coverage reporting")
-    
+
     args = parser.parse_args()
-    
+
     # Determine which tests to run
     test_files = []
     markers = []
-    
+
     if args.full:
         # Run all test files
         test_files = [
@@ -186,7 +186,7 @@ def main():
         # Default: fast unit tests
         test_files = ["tests/test_db_engine.py"]
         markers = ["unit"]
-    
+
     # Filter out non-existent test files
     existing_files = []
     for test_file in test_files:
@@ -195,26 +195,26 @@ def main():
         else:
             if not args.quiet:
                 print(f"Warning: Test file {test_file} not found, skipping...")
-    
+
     if not existing_files:
         print("Error: No test files found to run!")
         return 1
-    
+
     # Determine verbosity
     verbose = args.verbose or not args.quiet
-    
+
     if verbose:
         print(f"Running tests: {', '.join(existing_files)}")
         if markers:
             print(f"With markers: {', '.join(markers)}")
         print()
-    
+
     # Determine if coverage should be enabled
     coverage_enabled = not args.no_coverage
-    
+
     # Determine if we should show output (for performance/stress tests)
     show_output = args.performance or args.stress or args.slow
-    
+
     # Run the tests
     return run_tests(existing_files, markers, verbose=verbose, coverage=coverage_enabled, show_output=show_output)
 

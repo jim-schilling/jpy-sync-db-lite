@@ -13,11 +13,12 @@ import tempfile
 import threading
 import time
 import unittest
+
 import pytest
 from sqlalchemy import text
 
-from jpy_sync_db_lite.db_engine import DbEngine, DbResult
-from jpy_sync_db_lite.errors import OperationError, MaintenanceError
+from jpy_sync_db_lite.db_engine import DbEngine
+from jpy_sync_db_lite.errors import MaintenanceError
 
 
 class TestDbEngineSQLiteSpecific(unittest.TestCase):
@@ -345,7 +346,6 @@ class TestDbEngineSQLiteSpecific(unittest.TestCase):
     @pytest.mark.integration
     def test_concurrent_sqlite_operations(self):
         """Test concurrent SQLite-specific operations."""
-        import threading
 
         results = []
         errors = []
@@ -391,4 +391,4 @@ class TestDbEngineSQLiteSpecific(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main() 
+    unittest.main()

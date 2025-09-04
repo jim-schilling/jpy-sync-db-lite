@@ -12,14 +12,15 @@ from __future__ import annotations
 
 
 def main() -> None:
-	"""Minimal CLI that prints the package version if available."""
-	try:
-		from jpy_sync_db_lite._version import version  # type: ignore
-		print(version)
+    """Minimal CLI that prints the package version if available."""
+    try:
+        from jpy_sync_db_lite._version import version
 
-	except Exception:
-		print("jpy-sync-db-lite")
+        print(version)
+
+    except Exception:
+        print("jpy-sync-db-lite")
 
 
 if __name__ == "__main__":
-	main()
+    main()

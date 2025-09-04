@@ -12,8 +12,9 @@ import os
 import tempfile
 import time
 import unittest
-import pytest
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
+import pytest
 
 from jpy_sync_db_lite.db_engine import DbEngine
 
@@ -29,7 +30,7 @@ class TestDbEngineStress(unittest.TestCase):
         self.database_url = f"sqlite:///{self.temp_db.name}"
         # Create database engine for stress testing
         self.db_engine = DbEngine(self.database_url, debug=False)
-        
+
         # Explicitly enable WAL mode for better concurrency
         self.db_engine.execute("PRAGMA journal_mode=WAL")
         self.db_engine.execute("PRAGMA synchronous=NORMAL")
@@ -39,7 +40,7 @@ class TestDbEngineStress(unittest.TestCase):
         """Clean up after each test method."""
         if hasattr(self, 'db_engine'):
             self.db_engine.shutdown()
-        
+
         # Clean up the temp database file and WAL files
         if hasattr(self, 'temp_db'):
             db_files = [self.temp_db.name, f"{self.temp_db.name}-wal", f"{self.temp_db.name}-shm"]
@@ -57,7 +58,7 @@ class TestDbEngineStress(unittest.TestCase):
         num_clients = 10
         operations_per_client = 50
         test_duration = 30  # seconds
-        
+
         # Create test table for concurrent operations
         self.db_engine.execute("""
             CREATE TABLE IF NOT EXISTS stress_test (
@@ -68,7 +69,7 @@ class TestDbEngineStress(unittest.TestCase):
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         """)
-        
+
         # Track results
         results = {
             'total_operations': 0,
@@ -78,7 +79,7 @@ class TestDbEngineStress(unittest.TestCase):
             'end_time': None,
             'client_results': {}
         }
-        
+
         def client_work(client_id: int) -> dict:
             """Simulate a client performing database operations."""
             client_results = {
@@ -88,11 +89,11 @@ class TestDbEngineStress(unittest.TestCase):
                 'failed': 0,
                 'errors': []
             }
-            
+
             try:
                 for i in range(operations_per_client):
                     operation_type = 'read' if i % 3 == 0 else 'write'
-                    
+
                     if operation_type == 'read':
                         # Read operation
                         try:
@@ -104,7 +105,7 @@ class TestDbEngineStress(unittest.TestCase):
                         except Exception as e:
                             client_results['failed'] += 1
                             client_results['errors'].append(f"Read error: {e}")
-                    
+
                     else:
                         # Write operation
                         try:
@@ -120,28 +121,28 @@ class TestDbEngineStress(unittest.TestCase):
                         except Exception as e:
                             client_results['failed'] += 1
                             client_results['errors'].append(f"Write error: {e}")
-                    
+
                     client_results['operations'] += 1
-                    
+
                     # Small delay to simulate real-world usage
                     time.sleep(0.01)
-                    
+
             except Exception as e:
                 client_results['errors'].append(f"Client error: {e}")
-            
+
             return client_results
-        
+
         # Run concurrent clients
-        
+
         start_time = time.time()
-        
+
         with ThreadPoolExecutor(max_workers=num_clients) as executor:
             # Submit all client work
             future_to_client = {
-                executor.submit(client_work, client_id): client_id 
+                executor.submit(client_work, client_id): client_id
                 for client_id in range(num_clients)
             }
-            
+
             # Collect results as they complete
             for future in as_completed(future_to_client):
                 client_id = future_to_client[future]
@@ -151,30 +152,30 @@ class TestDbEngineStress(unittest.TestCase):
                     results['total_operations'] += client_result['operations']
                     results['successful_operations'] += client_result['successful']
                     results['failed_operations'] += client_result['failed']
-                except Exception as e:
+                except Exception:
                     pass  # Client failed, but continue with other clients
-        
+
         results['end_time'] = time.time()
         test_duration_actual = results['end_time'] - results['start_time']
-        
+
         # Calculate performance metrics
         total_ops = results['total_operations']
         successful_ops = results['successful_operations']
         failed_ops = results['failed_operations']
         ops_per_sec = total_ops / test_duration_actual if test_duration_actual > 0 else 0
         success_rate = (successful_ops / total_ops * 100) if total_ops > 0 else 0
-        
+
         # Verify database integrity
         final_count = self.db_engine.fetch("SELECT COUNT(*) as count FROM stress_test")
-        
+
         # Performance assertions
         self.assertGreater(success_rate, 95.0, f"Success rate {success_rate:.2f}% is below 95% threshold")
         self.assertGreater(ops_per_sec, 10.0, f"Operations per second {ops_per_sec:.2f} is below 10 ops/sec threshold")
         self.assertLess(test_duration_actual, test_duration * 1.5, f"Test took too long: {test_duration_actual:.2f}s")
-        
+
         # Verify all clients completed
         self.assertEqual(len(results['client_results']), num_clients, "Not all clients completed")
-        
+
         # Verify database state
         self.assertGreater(final_count.data[0]['count'], 0, "No records were inserted during stress test")
 
@@ -185,7 +186,7 @@ class TestDbEngineStress(unittest.TestCase):
         num_readers = 8
         num_writers = 4
         operations_per_thread = 100
-        
+
         # Create test table
         self.db_engine.execute("""
             CREATE TABLE IF NOT EXISTS rw_stress_test (
@@ -197,25 +198,25 @@ class TestDbEngineStress(unittest.TestCase):
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         """)
-        
+
         # Initialize with some data
         for i in range(10):
             self.db_engine.execute(
                 "INSERT INTO rw_stress_test (thread_id, thread_type, counter, data) VALUES (:tid, :type, :counter, :data)",
                 params={"tid": i, "type": "init", "counter": i, "data": f"initial_data_{i}"}
             )
-        
+
         results = {
             'readers': {'total': 0, 'successful': 0, 'failed': 0, 'errors': []},
             'writers': {'total': 0, 'successful': 0, 'failed': 0, 'errors': []},
             'start_time': time.time(),
             'end_time': None
         }
-        
+
         def reader_work(thread_id: int) -> dict:
             """Reader thread that performs SELECT operations."""
             thread_results = {'operations': 0, 'successful': 0, 'failed': 0, 'errors': []}
-            
+
             for i in range(operations_per_thread):
                 try:
                     # Read operations
@@ -229,13 +230,13 @@ class TestDbEngineStress(unittest.TestCase):
                     thread_results['errors'].append(f"Read error: {e}")
                 thread_results['operations'] += 1
                 time.sleep(0.001)  # Small delay
-            
+
             return thread_results
-        
+
         def writer_work(thread_id: int) -> dict:
             """Writer thread that performs INSERT/UPDATE operations."""
             thread_results = {'operations': 0, 'successful': 0, 'failed': 0, 'errors': []}
-            
+
             for i in range(operations_per_thread):
                 try:
                     # Alternate between INSERT and UPDATE
@@ -264,24 +265,24 @@ class TestDbEngineStress(unittest.TestCase):
                     thread_results['errors'].append(f"Write error: {e}")
                 thread_results['operations'] += 1
                 time.sleep(0.002)  # Slightly longer delay for writers
-            
-            return thread_results
-        
 
-        
+            return thread_results
+
+
+
         start_time = time.time()
-        
+
         with ThreadPoolExecutor(max_workers=num_readers + num_writers) as executor:
             # Submit reader tasks
             reader_futures = [
                 executor.submit(reader_work, i) for i in range(num_readers)
             ]
-            
+
             # Submit writer tasks
             writer_futures = [
                 executor.submit(writer_work, i) for i in range(num_writers)
             ]
-            
+
             # Collect reader results
             for future in as_completed(reader_futures):
                 result = future.result()
@@ -289,7 +290,7 @@ class TestDbEngineStress(unittest.TestCase):
                 results['readers']['successful'] += result['successful']
                 results['readers']['failed'] += result['failed']
                 results['readers']['errors'].extend(result['errors'])
-            
+
             # Collect writer results
             for future in as_completed(writer_futures):
                 result = future.result()
@@ -297,19 +298,19 @@ class TestDbEngineStress(unittest.TestCase):
                 results['writers']['successful'] += result['successful']
                 results['writers']['failed'] += result['failed']
                 results['writers']['errors'].extend(result['errors'])
-        
+
         results['end_time'] = time.time()
         test_duration = results['end_time'] - results['start_time']
-        
+
         # Calculate metrics
         total_ops = results['readers']['total'] + results['writers']['total']
         total_successful = results['readers']['successful'] + results['writers']['successful']
         ops_per_sec = total_ops / test_duration if test_duration > 0 else 0
         success_rate = (total_successful / total_ops * 100) if total_ops > 0 else 0
-        
+
         # Verify final database state
         final_count = self.db_engine.fetch("SELECT COUNT(*) as count FROM rw_stress_test")
-        
+
         # Assertions
         self.assertGreater(success_rate, 90.0, f"Success rate {success_rate:.2f}% is below 90% threshold")
         self.assertGreater(ops_per_sec, 50.0, f"Operations per second {ops_per_sec:.2f} is below 50 ops/sec threshold")
@@ -322,7 +323,7 @@ class TestDbEngineStress(unittest.TestCase):
         num_clients = 20
         operations_per_client = 25
         test_duration = 60  # seconds
-        
+
         # Create test table
         self.db_engine.execute("""
             CREATE TABLE IF NOT EXISTS high_concurrency_test (
@@ -333,7 +334,7 @@ class TestDbEngineStress(unittest.TestCase):
                 data TEXT
             )
         """)
-        
+
         results = {
             'total_operations': 0,
             'successful_operations': 0,
@@ -342,7 +343,7 @@ class TestDbEngineStress(unittest.TestCase):
             'end_time': None,
             'client_results': {}
         }
-        
+
         def high_concurrency_work(client_id: int) -> dict:
             """High concurrency client work."""
             client_results = {
@@ -352,12 +353,12 @@ class TestDbEngineStress(unittest.TestCase):
                 'failed': 0,
                 'errors': []
             }
-            
+
             try:
                 for i in range(operations_per_client):
                     # Mix of operations
                     operation_type = i % 4  # 0=read, 1=insert, 2=update, 3=delete
-                    
+
                     try:
                         if operation_type == 0:
                             # Read
@@ -393,30 +394,30 @@ class TestDbEngineStress(unittest.TestCase):
                                     "op_id": i
                                 }
                             )
-                        
+
                         client_results['successful'] += 1
                     except Exception as e:
                         client_results['failed'] += 1
                         client_results['errors'].append(f"Operation {operation_type} error: {e}")
-                    
+
                     client_results['operations'] += 1
                     time.sleep(0.005)  # Very small delay
-                    
+
             except Exception as e:
                 client_results['errors'].append(f"Client error: {e}")
-            
-            return client_results
-        
 
-        
+            return client_results
+
+
+
         start_time = time.time()
-        
+
         with ThreadPoolExecutor(max_workers=num_clients) as executor:
             future_to_client = {
-                executor.submit(high_concurrency_work, client_id): client_id 
+                executor.submit(high_concurrency_work, client_id): client_id
                 for client_id in range(num_clients)
             }
-            
+
             for future in as_completed(future_to_client):
                 client_id = future_to_client[future]
                 try:
@@ -425,22 +426,22 @@ class TestDbEngineStress(unittest.TestCase):
                     results['total_operations'] += client_result['operations']
                     results['successful_operations'] += client_result['successful']
                     results['failed_operations'] += client_result['failed']
-                except Exception as e:
+                except Exception:
                     pass  # Client failed, but continue with other clients
-        
+
         results['end_time'] = time.time()
         test_duration_actual = results['end_time'] - results['start_time']
-        
+
         # Calculate metrics
         total_ops = results['total_operations']
         successful_ops = results['successful_operations']
         failed_ops = results['failed_operations']
         ops_per_sec = total_ops / test_duration_actual if test_duration_actual > 0 else 0
         success_rate = (successful_ops / total_ops * 100) if total_ops > 0 else 0
-        
+
         # Verify database state
         final_count = self.db_engine.fetch("SELECT COUNT(*) as count FROM high_concurrency_test")
-        
+
         # Assertions for high concurrency
         self.assertGreater(success_rate, 85.0, f"Success rate {success_rate:.2f}% is below 85% threshold")
         self.assertGreater(ops_per_sec, 20.0, f"Operations per second {ops_per_sec:.2f} is below 20 ops/sec threshold")
@@ -448,4 +449,4 @@ class TestDbEngineStress(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main() 
+    unittest.main()
