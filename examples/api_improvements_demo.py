@@ -171,7 +171,7 @@ def main():
             print(f"   {key}: {value}")
 
         db.shutdown()
-        print("\n✅ Demo completed successfully!")
+        print("\nDemo completed successfully!")
 
     finally:
         # Clean up
