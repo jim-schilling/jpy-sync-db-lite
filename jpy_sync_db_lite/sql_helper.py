@@ -86,7 +86,10 @@ def find_main_statement_after_with(tokens: list[Token]) -> str | None:
 
     This unified scanner handles the complete CTE parsing logic:
     - Skips whitespace and comments
-    - For each CTE: consumes optional column list (...), expects AS, then consumes balanced (...) body
+    - For each CTE: expects AS, then consumes balanced (...) body
+    - Note: optional column lists immediately after the CTE name (e.g., cte_name(col1, col2))
+      are not explicitly parsed. The scanner advances token-by-token until it encounters
+      the AS keyword, without tracking parentheses before AS.
     - After CTE body: if next significant token is comma, continues to next CTE; otherwise breaks
     - Returns the next significant keyword as the main statement
 
