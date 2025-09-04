@@ -8,18 +8,16 @@ Please keep this header when you use this code.
 This module is licensed under the MIT License.
 """
 
-import os
-import queue
-import tempfile
+import re
 import threading
 import time
 import unittest
+
 import pytest
 from sqlalchemy import text
-import re
 
-from jpy_sync_db_lite.db_engine import DbEngine, DbResult
-from jpy_sync_db_lite.errors import OperationError, TransactionError
+from jpy_sync_db_lite.db_engine import DbEngine
+from jpy_sync_db_lite.errors import OperationError
 
 
 class TestDbEngineCore(unittest.TestCase):
@@ -56,7 +54,7 @@ class TestDbEngineCore(unittest.TestCase):
                 # Get all table names
                 result = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))
                 tables = [row[0] for row in result.fetchall()]
-                
+
                 # Drop all tables (except sqlite_master)
                 for table in tables:
                     if table != 'sqlite_master':
@@ -110,7 +108,7 @@ class TestDbEngineCore(unittest.TestCase):
             timeout=60,
             check_same_thread=True
         )
-        
+
         db.shutdown()
 
     @pytest.mark.unit
@@ -296,7 +294,7 @@ class TestDbEngineCore(unittest.TestCase):
         """Test getting database statistics."""
         # Get initial stats
         initial_stats = self.db_engine.get_stats()
-        
+
         # Perform some operations to generate stats
         self.db_engine.execute("SELECT 1")
         self.db_engine.fetch("SELECT 1")
@@ -460,4 +458,4 @@ class TestDbEngineCore(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main() 
+    unittest.main()

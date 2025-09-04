@@ -9,21 +9,19 @@ This module is licensed under the MIT License.
 """
 
 import os
-import queue
 import tempfile
-import threading
-import time
 import unittest
+
 import pytest
 from sqlalchemy import text
 
 from jpy_sync_db_lite.db_engine import DbEngine, DbResult
-from jpy_sync_db_lite.errors import OperationError, MaintenanceError, TransactionError
+from jpy_sync_db_lite.errors import MaintenanceError, OperationError, TransactionError
 
 
 class TestDbEngineCoverage(unittest.TestCase):
     """Additional tests to improve coverage for db_engine.py."""
-    
+
     def setUp(self):
         """Set up test fixtures."""
         self.database_url = "sqlite:///:memory:"
@@ -158,7 +156,7 @@ class TestDbEngineCoverage(unittest.TestCase):
                 "query": "SELECT COUNT(*) as count FROM test_users"
             }
         ]
-        
+
         results = self.db_engine.execute_transaction(operations)
         self.assertEqual(len(results), 3)
         self.assertEqual(results[0]["operation"], "fetch")
@@ -174,7 +172,7 @@ class TestDbEngineCoverage(unittest.TestCase):
                 "query": "SELECT 1"
             }
         ]
-        
+
         with self.assertRaises(TransactionError):
             self.db_engine.execute_transaction(operations)
 
@@ -186,7 +184,7 @@ class TestDbEngineCoverage(unittest.TestCase):
                 "operation": "fetch"
             }
         ]
-        
+
         with self.assertRaises(TransactionError):
             self.db_engine.execute_transaction(operations)
 
@@ -198,7 +196,7 @@ class TestDbEngineCoverage(unittest.TestCase):
                 "query": "SELECT 1"
             }
         ]
-        
+
         with self.assertRaises(TransactionError):
             self.db_engine.execute_transaction(operations)
 
@@ -232,7 +230,7 @@ class TestDbEngineCoverage(unittest.TestCase):
         """Test get_sqlite_info with in-memory database."""
         memory_engine = DbEngine("sqlite:///:memory:")
         info = memory_engine.get_sqlite_info()
-        
+
         # Should have basic info even for in-memory DB
         self.assertIn('version', info)
         self.assertIsInstance(info['version'], str)
@@ -248,11 +246,11 @@ class TestDbEngineCoverage(unittest.TestCase):
     def test_stats_increment(self) -> None:
         """Test that stats are properly incremented."""
         initial_stats = self.db_engine.get_stats()
-        
+
         # Perform some operations
         self.db_engine.execute("SELECT 1")
         self.db_engine.fetch("SELECT 1")
-        
+
         # Stats should be updated
         updated_stats = self.db_engine.get_stats()
         self.assertGreaterEqual(updated_stats['requests'], initial_stats['requests'])
@@ -303,19 +301,19 @@ class TestDbEngineCoverage(unittest.TestCase):
         """Test DbEngine with prepared statements disabled."""
         # Create engine with prepared statements disabled
         db = DbEngine(self.database_url, enable_prepared_statements=False)
-        
+
         # Run multiple different queries
         db.execute("SELECT 1 as one")
         db.fetch("SELECT 2 as two")
         db.execute("SELECT 3 as three")
-        
+
         # Assert no prepared statements are cached
         self.assertEqual(db.get_prepared_statement_count(), 0)
-        
+
         # Verify performance metrics show 0 cached statements
         perf_info = db.get_performance_info()
         self.assertEqual(perf_info["performance_metrics"]["prepared_statements_cached"], 0)
-        
+
         db.shutdown()
 
     @pytest.mark.unit
@@ -323,22 +321,22 @@ class TestDbEngineCoverage(unittest.TestCase):
         """Test prepared statement cache lifecycle."""
         # Default engine should have prepared statements enabled
         db = DbEngine(self.database_url)
-        
+
         # Run two distinct execute statements
         db.execute("SELECT 1 as one")
         db.execute("SELECT 2 as two")
-        
+
         # Should have at least 2 prepared statements cached
         self.assertGreaterEqual(db.get_prepared_statement_count(), 2)
-        
+
         # Clear prepared statements
         db.clear_prepared_statements()
         self.assertEqual(db.get_prepared_statement_count(), 0)
-        
+
         # Follow-up execute should repopulate cache
         db.execute("SELECT 3 as three")
         self.assertGreaterEqual(db.get_prepared_statement_count(), 1)
-        
+
         db.shutdown()
 
     @pytest.mark.unit
@@ -349,7 +347,7 @@ class TestDbEngineCoverage(unittest.TestCase):
         self.assertTrue(result.result)
         self.assertEqual(result.rowcount, 0)
         self.assertIsNone(result.data)
-        
+
         # Fetch SELECT should return data
         result = self.db_engine.fetch("SELECT 1 AS one")
         self.assertEqual(result.data[0]["one"], 1)
@@ -359,17 +357,17 @@ class TestDbEngineCoverage(unittest.TestCase):
         """Test connection health and recreation."""
         # Initially connection should be healthy
         self.assertTrue(self.db_engine.check_connection_health())
-        
+
         # Get initial connection info
         initial_info = self.db_engine.get_connection_info()
         initial_recreations = initial_info["connection_recreations"]
-        
+
         # Recreate connection
         self.db_engine.recreate_connection()
-        
+
         # Connection should still be healthy
         self.assertTrue(self.db_engine.check_connection_health())
-        
+
         # Connection recreations should have increased
         updated_info = self.db_engine.get_connection_info()
         self.assertGreater(updated_info["connection_recreations"], initial_recreations)
@@ -379,13 +377,13 @@ class TestDbEngineCoverage(unittest.TestCase):
         """Test connection health after shutdown."""
         # Create a separate engine for this test
         db = DbEngine(self.database_url)
-        
+
         # Initially healthy
         self.assertTrue(db.check_connection_health())
-        
+
         # Shutdown
         db.shutdown()
-        
+
         # After shutdown, health check should return False
         self.assertFalse(db.check_connection_health())
 
@@ -402,22 +400,22 @@ class TestDbEngineCoverage(unittest.TestCase):
         """Test get_performance_info structure and computed metrics."""
         # Get baseline performance info
         perf_info = self.db_engine.get_performance_info()
-        
+
         # Check structure
         self.assertIn("engine_stats", perf_info)
         self.assertIn("performance_metrics", perf_info)
         self.assertIn("requests", perf_info["engine_stats"])
         self.assertIn("error_rate_percent", perf_info["performance_metrics"])
-        
+
         # Perform operations and check metrics change
         initial_requests = perf_info["engine_stats"]["requests"]
-        
+
         self.db_engine.execute("SELECT 1")
         self.db_engine.fetch("SELECT 2")
-        
+
         updated_perf_info = self.db_engine.get_performance_info()
         self.assertGreater(updated_perf_info["engine_stats"]["requests"], initial_requests)
-        
+
         # Error rate should stay 0 for successful operations
         self.assertEqual(updated_perf_info["performance_metrics"]["error_rate_percent"], 0.0)
 
@@ -433,21 +431,21 @@ class TestDbEngineCoverage(unittest.TestCase):
             INSERT INTO test_users (name, email, active) 
             VALUES ('Test User 2', 'test2@example.com', 1)
         """)
-        
+
         # Execute many fetch operations
         params_list = [
             {"name": "Test User 1"},
             {"name": "Test User 2"}
         ]
-        
+
         results = self.db_engine.execute_many(
             "SELECT * FROM test_users WHERE name = :name",
             params_list
         )
-        
+
         # Should have 2 results
         self.assertEqual(len(results), 2)
-        
+
         # Each result should have data
         for result in results:
             self.assertIsInstance(result, DbResult)
@@ -463,21 +461,21 @@ class TestDbEngineCoverage(unittest.TestCase):
             {"name": "Bulk User 2", "email": "bulk2@example.com", "active": 1},
             {"name": "Bulk User 3", "email": "bulk3@example.com", "active": 0}
         ]
-        
+
         results = self.db_engine.execute_many(
             "INSERT INTO test_users (name, email, active) VALUES (:name, :email, :active)",
             params_list
         )
-        
+
         # Should have 3 results
         self.assertEqual(len(results), 3)
-        
+
         # Each result should have rowcount=1
         for result in results:
             self.assertIsInstance(result, DbResult)
             self.assertEqual(result.rowcount, 1)
             self.assertTrue(result.result)
-        
+
         # Verify total rows were inserted
         count_result = self.db_engine.fetch("SELECT COUNT(*) as count FROM test_users")
         total_count = count_result.data[0]["count"]
@@ -494,25 +492,25 @@ class TestDbEngineCoverage(unittest.TestCase):
         INSERT INTO batch_test (name) VALUES ('test2');
         SELECT name FROM batch_test ORDER BY id;
         """
-        
+
         # Test batch execution
         batch_results = self.db_engine.batch(script_sql)
-        
+
         # Should have results for each statement
         self.assertGreater(len(batch_results), 0)
-        
+
         # Each result should have operation type
         for result in batch_results:
             self.assertIn(result["operation"], {"execute", "fetch"})
             if result["operation"] == "fetch":
                 self.assertIsNotNone(result["result"].data)
-        
+
         # Test script execution
         script_results = self.db_engine.script(script_sql)
-        
+
         # Should have same number of results
         self.assertEqual(len(script_results), len(batch_results))
-        
+
         # Each result should have operation type
         for result in script_results:
             self.assertIn(result["operation"], {"execute", "fetch"})
@@ -522,13 +520,13 @@ class TestDbEngineCoverage(unittest.TestCase):
         """Test maintenance operations happy paths."""
         # Vacuum should not raise
         self.db_engine.vacuum()
-        
+
         # Analyze should not raise
         self.db_engine.analyze()
-        
+
         # Optimize should not raise
         self.db_engine.optimize()
-        
+
         # Integrity check should return list
         issues = self.db_engine.integrity_check()
         self.assertIsInstance(issues, list)
@@ -541,24 +539,24 @@ class TestDbEngineCoverage(unittest.TestCase):
         self.assertIn('version', memory_info)
         self.assertIn('database_size', memory_info)
         # Database size might be None for in-memory
-        
+
         # File DB info
         temp_db = tempfile.NamedTemporaryFile(delete=False, suffix='.db')
         temp_db.close()
         try:
             file_db = DbEngine(f"sqlite:///{temp_db.name}")
-            
+
             # Perform a write to ensure file is created
             file_db.execute("CREATE TABLE test (id INTEGER PRIMARY KEY)")
             file_db.execute("INSERT INTO test (id) VALUES (1)")
-            
+
             file_info = file_db.get_sqlite_info()
             self.assertIn('version', file_info)
             self.assertIn('database_size', file_info)
-            
+
             # File DB should have a size
             self.assertIsInstance(file_info['database_size'], int)
-            
+
             file_db.shutdown()
         finally:
             # Clean up temp file
@@ -571,4 +569,4 @@ class TestDbEngineCoverage(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main() 
+    unittest.main()

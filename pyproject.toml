@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "jpy-sync-db-lite"
-version = "2025.4.1"
+version = "2025.5.0"
 description = "Jim's Python - Synchronous Database Wrapper for SQLite"
 readme = "README.md"
 license = "MIT"
@@ -45,7 +45,6 @@ dev = [
     "coverage[toml]>=7.3.0,<8.0",
     "mypy>=1.5.0,<2.0",
     "ruff>=0.1.0,<1.0",
-    "black>=23.0.0,<24.0",
     "isort>=5.12.0,<6.0",
     "bandit[toml]>=1.7.0,<2.0",
     "pre-commit>=3.4.0,<4.0",
@@ -60,7 +59,6 @@ test = [
 ]
 lint = [
     "ruff>=0.1.0,<1.0",
-    "black>=23.0.0,<24.0",
     "isort>=5.12.0,<6.0",
     "bandit[toml]>=1.7.0,<2.0",
 ]
@@ -114,8 +112,10 @@ module = [
 ignore_missing_imports = true
 
 [tool.ruff]
-target-version = "py310"
 line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
 select = [
     "E",  # pycodestyle errors
     "W",  # pycodestyle warnings
@@ -126,35 +126,24 @@ select = [
     "UP", # pyupgrade
 ]
 ignore = [
-    "E501",  # line too long, handled by black
     "B008",  # do not perform function calls in argument defaults
     "C901",  # too complex
 ]
 
-[tool.ruff.per-file-ignores]
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+[tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
 "tests/**/*" = ["B011"]
 
-[tool.black]
-target-version = ['py310']
-line-length = 120
-include = '\\.pyi?$'
-extend-exclude = '''
-/(
-  # directories
-  \\.eggs
-  | \\.git
-  | \\.hg
-  | \\.mypy_cache
-  | \\.tox
-  | \\.venv
-  | build
-  | dist
-)/
-'''
+
 
 [tool.isort]
-profile = "black"
+profile = "ruff"
 multi_line_output = 3
 line_length = 120
 known_first_party = ["jpy_sync_db_lite"]
@@ -179,6 +168,8 @@ addopts = [
     "--durations=10",
     "--tb=short",
     "-x",  # stop on first failure
+    "-v",  # verbose output
+    "--numprocesses=auto",  # parallel execution with automatic worker detection
 ]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",

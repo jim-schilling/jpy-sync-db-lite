@@ -12,7 +12,6 @@ import argparse
 import os
 import statistics
 import sys
-import tempfile
 import time
 from typing import Any
 
@@ -243,17 +242,17 @@ class DbEngineBenchmark:
         start_time = time.time()
         for i in range(num_operations):
             op_start = time.time()
-            
+
             # Test connection health check
             is_healthy = self.db_engine.check_connection_health()
             if not is_healthy:
                 raise RuntimeError("Connection is not healthy")
-            
+
             # Test basic operation
             result = self.db_engine.execute("SELECT 1")
             if not result.result:
                 raise RuntimeError("Basic operation failed")
-            
+
             op_end = time.time()
             latencies.append((op_end - op_start) * 1000)
 

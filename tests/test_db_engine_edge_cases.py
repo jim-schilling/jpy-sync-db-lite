@@ -10,13 +10,11 @@ This module is licensed under the MIT License.
 
 import os
 import tempfile
-import threading
-import time
 import unittest
+
 import pytest
 
-from jpy_sync_db_lite.db_engine import DbEngine, DbResult
-from jpy_sync_db_lite.errors import OperationError
+from jpy_sync_db_lite.db_engine import DbEngine
 
 
 class TestDbEngineEdgeCases(unittest.TestCase):
@@ -73,7 +71,7 @@ class TestDbEngineEdgeCases(unittest.TestCase):
         # Create a temporary file for this specific test
         temp_fd, temp_path = tempfile.mkstemp(suffix='.db')
         os.close(temp_fd)
-        
+
         try:
             # Create a read-only database file
             with open(temp_path, 'w') as f:
@@ -97,4 +95,4 @@ class TestDbEngineEdgeCases(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main() 
+    unittest.main()
