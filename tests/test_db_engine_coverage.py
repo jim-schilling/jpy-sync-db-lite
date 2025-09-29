@@ -10,7 +10,6 @@ This module is licensed under the MIT License.
 
 import os
 import tempfile
-import unittest
 
 import pytest
 from sqlalchemy import text
@@ -19,42 +18,38 @@ from jpy_sync_db_lite.db_engine import DbEngine, DbResult
 from jpy_sync_db_lite.errors import MaintenanceError, OperationError, TransactionError
 
 
-class TestDbEngineCoverage(unittest.TestCase):
+class TestDbEngineCoverage:
     """Additional tests to improve coverage for db_engine.py."""
 
-    def setUp(self):
+    @pytest.fixture(autouse=True)
+    def setup_method(self):
         """Set up test fixtures."""
         self.database_url = "sqlite:///:memory:"
         self.db_engine = DbEngine(self.database_url, debug=False)
-
-        # Create test table
-        self.db_engine.execute("""
+        self.db_engine.execute(
+            """
             CREATE TABLE test_users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
                 email TEXT UNIQUE,
                 active BOOLEAN DEFAULT 1
             )
-        """)
-
-        # Insert test data
+        """
+        )
         test_data = [
             {"name": "Alice Johnson", "email": "alice@example.com", "active": True},
             {"name": "Bob Smith", "email": "bob@example.com", "active": True},
-            {"name": "Charlie Brown", "email": "charlie@example.com", "active": False}
+            {"name": "Charlie Brown", "email": "charlie@example.com", "active": False},
         ]
-
         insert_sql = """
         INSERT INTO test_users (name, email, active)
         VALUES (:name, :email, :active)
         """
-
         for data in test_data:
             self.db_engine.execute(insert_sql, params=data)
-
-    def tearDown(self):
+        yield
         """Clean up test fixtures."""
-        if hasattr(self, 'db_engine'):
+        if hasattr(self, "db_engine"):
             self.db_engine.shutdown()
 
     def test_worker_thread_management(self):
@@ -79,22 +74,16 @@ class TestDbEngineCoverage(unittest.TestCase):
         with self.db_engine.get_raw_connection() as conn:
             result = conn.execute(text("PRAGMA cache_size"))
             cache_size = result.scalar()
-            self.assertEqual(cache_size, 1000)
+            assert cache_size == 1000
 
     @pytest.mark.unit
     def test_execute_with_list_params_and_rowcount(self) -> None:
         """Test execute with list params and rowcount handling."""
         # Test with list params where rowcount is available
-        update_data = [
-            {"id": 1, "active": False},
-            {"id": 2, "active": True}
-        ]
-        result = self.db_engine.execute(
-            "UPDATE test_users SET active = :active WHERE id = :id",
-            params=update_data
-        )
-        self.assertEqual(result.rowcount, 2)
-        self.assertTrue(result.result)
+        update_data = [{"id": 1, "active": False}, {"id": 2, "active": True}]
+        result = self.db_engine.execute("UPDATE test_users SET active = :active WHERE id = :id", params=update_data)
+        assert result.rowcount == 2
+        assert result.result
 
     @pytest.mark.unit
     def test_execute_with_no_rowcount(self) -> None:
@@ -102,18 +91,18 @@ class TestDbEngineCoverage(unittest.TestCase):
         # Test a statement that doesn't provide rowcount
         result = self.db_engine.execute("PRAGMA cache_size")
         # Should handle gracefully even if rowcount is None
-        self.assertIsInstance(result, DbResult)
+        assert isinstance(result, DbResult)
 
     @pytest.mark.unit
     def test_fetch_with_empty_result(self) -> None:
         """Test fetch with empty result set."""
         result = self.db_engine.fetch(
             "SELECT * FROM test_users WHERE name = :name",
-            params={"name": "NonExistentUser"}
+            params={"name": "NonExistentUser"},
         )
-        self.assertFalse(result.result)
-        self.assertEqual(result.rowcount, 0)
-        self.assertEqual(len(result.data), 0)
+        assert not result.result
+        assert result.rowcount == 0
+        assert len(result.data) == 0
 
     @pytest.mark.unit
     def test_batch_with_error_statement(self) -> None:
@@ -123,7 +112,7 @@ class TestDbEngineCoverage(unittest.TestCase):
         INVALID SQL STATEMENT;
         SELECT 2;
         """
-        with self.assertRaises(TransactionError):
+        with pytest.raises(TransactionError):
             self.db_engine.batch(batch_sql)
 
     @pytest.mark.unit
@@ -136,68 +125,53 @@ class TestDbEngineCoverage(unittest.TestCase):
         """
         # Should succeed normally
         results = self.db_engine.batch(batch_sql)
-        self.assertEqual(len(results), 2)
+        assert len(results) == 2
 
     @pytest.mark.integration
     def test_execute_transaction_with_fetch_operation(self) -> None:
         """Test execute_transaction with fetch operations."""
         operations = [
-            {
-                "operation": "fetch",
-                "query": "SELECT COUNT(*) as count FROM test_users"
-            },
+            {"operation": "fetch", "query": "SELECT COUNT(*) as count FROM test_users"},
             {
                 "operation": "execute",
                 "query": "INSERT INTO test_users (name, email, active) VALUES (:name, :email, :active)",
-                "params": {"name": "NewUser", "email": "new@example.com", "active": True}
+                "params": {
+                    "name": "NewUser",
+                    "email": "new@example.com",
+                    "active": True,
+                },
             },
-            {
-                "operation": "fetch",
-                "query": "SELECT COUNT(*) as count FROM test_users"
-            }
+            {"operation": "fetch", "query": "SELECT COUNT(*) as count FROM test_users"},
         ]
 
         results = self.db_engine.execute_transaction(operations)
-        self.assertEqual(len(results), 3)
-        self.assertEqual(results[0]["operation"], "fetch")
-        self.assertEqual(results[1]["operation"], "execute")
-        self.assertEqual(results[2]["operation"], "fetch")
+        assert len(results) == 3
+        assert results[0]["operation"] == "fetch"
+        assert results[1]["operation"] == "execute"
+        assert results[2]["operation"] == "fetch"
 
     @pytest.mark.unit
     def test_execute_transaction_with_invalid_operation(self) -> None:
         """Test execute_transaction with invalid operation type."""
-        operations = [
-            {
-                "operation": "invalid_op",
-                "query": "SELECT 1"
-            }
-        ]
+        operations = [{"operation": "invalid_op", "query": "SELECT 1"}]
 
-        with self.assertRaises(TransactionError):
+        with pytest.raises(TransactionError):
             self.db_engine.execute_transaction(operations)
 
     @pytest.mark.unit
     def test_execute_transaction_with_missing_query(self) -> None:
         """Test execute_transaction with missing query."""
-        operations = [
-            {
-                "operation": "fetch"
-            }
-        ]
+        operations = [{"operation": "fetch"}]
 
-        with self.assertRaises(TransactionError):
+        with pytest.raises(TransactionError):
             self.db_engine.execute_transaction(operations)
 
     @pytest.mark.unit
     def test_execute_transaction_with_missing_operation(self) -> None:
         """Test execute_transaction with missing operation."""
-        operations = [
-            {
-                "query": "SELECT 1"
-            }
-        ]
+        operations = [{"query": "SELECT 1"}]
 
-        with self.assertRaises(TransactionError):
+        with pytest.raises(TransactionError):
             self.db_engine.execute_transaction(operations)
 
     @pytest.mark.unit
@@ -210,7 +184,7 @@ class TestDbEngineCoverage(unittest.TestCase):
     def test_analyze_with_error(self) -> None:
         """Test analyze with potential error."""
         # Test analyze on non-existent table
-        with self.assertRaises(MaintenanceError):
+        with pytest.raises(MaintenanceError):
             self.db_engine.analyze(table_name="non_existent_table")
 
     @pytest.mark.unit
@@ -218,7 +192,7 @@ class TestDbEngineCoverage(unittest.TestCase):
         """Test integrity check that finds issues."""
         # Run integrity check - should return empty list for healthy database
         issues = self.db_engine.integrity_check()
-        self.assertIsInstance(issues, list)
+        assert isinstance(issues, list)
 
     @pytest.mark.unit
     def test_optimize_operation(self) -> None:
@@ -232,11 +206,11 @@ class TestDbEngineCoverage(unittest.TestCase):
         info = memory_engine.get_sqlite_info()
 
         # Should have basic info even for in-memory DB
-        self.assertIn('version', info)
-        self.assertIsInstance(info['version'], str)
+        assert "version" in info
+        assert isinstance(info["version"], str)
 
         # Database size might be None for in-memory
-        self.assertIn('database_size', info)
+        assert "database_size" in info
 
         memory_engine.shutdown()
 
@@ -253,38 +227,38 @@ class TestDbEngineCoverage(unittest.TestCase):
 
         # Stats should be updated
         updated_stats = self.db_engine.get_stats()
-        self.assertGreaterEqual(updated_stats['requests'], initial_stats['requests'])
+        assert updated_stats["requests"] >= initial_stats["requests"]
 
     @pytest.mark.unit
     def test_db_operation_error(self) -> None:
         """Test DbOperationError exception."""
         error = OperationError("Test operation error")
-        self.assertIn("Test operation error", str(error))
+        assert "Test operation error" in str(error)
 
     @pytest.mark.unit
     def test_engine_properties(self) -> None:
         """Test all engine properties."""
-        self.assertIsNotNone(self.db_engine.engine)
-        self.assertIsInstance(self.db_engine.get_stats(), dict)
+        assert self.db_engine.engine is not None
+        assert isinstance(self.db_engine.get_stats(), dict)
 
     @pytest.mark.unit
     def test_execute_with_none_params(self) -> None:
         """Test execute with None params."""
         result = self.db_engine.execute("SELECT 1", params=None)
-        self.assertIsInstance(result, DbResult)
+        assert isinstance(result, DbResult)
 
     @pytest.mark.unit
     def test_fetch_with_none_params(self) -> None:
         """Test fetch with None params."""
         result = self.db_engine.fetch("SELECT 1", params=None)
-        self.assertIsInstance(result, DbResult)
+        assert isinstance(result, DbResult)
 
     @pytest.mark.unit
     def test_batch_with_empty_statements(self) -> None:
         """Test batch with empty statements."""
         batch_sql = "   \n   \n   "  # Only whitespace
         results = self.db_engine.batch(batch_sql)
-        self.assertEqual(len(results), 0)  # Empty statements should produce no results
+        assert len(results) == 0  # Empty statements should produce no results
 
     @pytest.mark.unit
     def test_batch_with_comments_only(self) -> None:
@@ -294,7 +268,7 @@ class TestDbEngineCoverage(unittest.TestCase):
         /* This is another comment */
         """
         results = self.db_engine.batch(batch_sql)
-        self.assertEqual(len(results), 0)  # Comment-only statements should produce no results
+        assert len(results) == 0  # Comment-only statements should produce no results
 
     @pytest.mark.unit
     def test_prepared_statements_disabled(self) -> None:
@@ -308,11 +282,11 @@ class TestDbEngineCoverage(unittest.TestCase):
         db.execute("SELECT 3 as three")
 
         # Assert no prepared statements are cached
-        self.assertEqual(db.get_prepared_statement_count(), 0)
+        assert db.get_prepared_statement_count() == 0
 
         # Verify performance metrics show 0 cached statements
         perf_info = db.get_performance_info()
-        self.assertEqual(perf_info["performance_metrics"]["prepared_statements_cached"], 0)
+        assert perf_info["performance_metrics"]["prepared_statements_cached"] == 0
 
         db.shutdown()
 
@@ -327,15 +301,15 @@ class TestDbEngineCoverage(unittest.TestCase):
         db.execute("SELECT 2 as two")
 
         # Should have at least 2 prepared statements cached
-        self.assertGreaterEqual(db.get_prepared_statement_count(), 2)
+        assert db.get_prepared_statement_count() >= 2
 
         # Clear prepared statements
         db.clear_prepared_statements()
-        self.assertEqual(db.get_prepared_statement_count(), 0)
+        assert db.get_prepared_statement_count() == 0
 
         # Follow-up execute should repopulate cache
         db.execute("SELECT 3 as three")
-        self.assertGreaterEqual(db.get_prepared_statement_count(), 1)
+        assert db.get_prepared_statement_count() >= 1
 
         db.shutdown()
 
@@ -344,19 +318,19 @@ class TestDbEngineCoverage(unittest.TestCase):
         """Test execute with SELECT statement rowcount handling."""
         # Execute SELECT should return rowcount=0 and data=None
         result = self.db_engine.execute("SELECT 1 AS one")
-        self.assertTrue(result.result)
-        self.assertEqual(result.rowcount, 0)
-        self.assertIsNone(result.data)
+        assert result.result
+        assert result.rowcount == 0
+        assert result.data is None
 
         # Fetch SELECT should return data
         result = self.db_engine.fetch("SELECT 1 AS one")
-        self.assertEqual(result.data[0]["one"], 1)
+        assert result.data[0]["one"] == 1
 
     @pytest.mark.unit
     def test_connection_health_and_recreation(self) -> None:
         """Test connection health and recreation."""
         # Initially connection should be healthy
-        self.assertTrue(self.db_engine.check_connection_health())
+        assert self.db_engine.check_connection_health()
 
         # Get initial connection info
         initial_info = self.db_engine.get_connection_info()
@@ -366,11 +340,11 @@ class TestDbEngineCoverage(unittest.TestCase):
         self.db_engine.recreate_connection()
 
         # Connection should still be healthy
-        self.assertTrue(self.db_engine.check_connection_health())
+        assert self.db_engine.check_connection_health()
 
         # Connection recreations should have increased
         updated_info = self.db_engine.get_connection_info()
-        self.assertGreater(updated_info["connection_recreations"], initial_recreations)
+        assert updated_info["connection_recreations"] > initial_recreations
 
     @pytest.mark.unit
     def test_connection_health_after_shutdown(self) -> None:
@@ -379,18 +353,18 @@ class TestDbEngineCoverage(unittest.TestCase):
         db = DbEngine(self.database_url)
 
         # Initially healthy
-        self.assertTrue(db.check_connection_health())
+        assert db.check_connection_health()
 
         # Shutdown
         db.shutdown()
 
         # After shutdown, health check should return False
-        self.assertFalse(db.check_connection_health())
+        assert not db.check_connection_health()
 
     @pytest.mark.unit
     def test_transaction_context_error_propagation(self) -> None:
         """Test transaction context manager error propagation."""
-        with self.assertRaises(TransactionError):
+        with pytest.raises(TransactionError):
             with self.db_engine.transaction() as tx:
                 tx.execute("SELECT 1")
                 raise RuntimeError("Test exception")
@@ -402,10 +376,10 @@ class TestDbEngineCoverage(unittest.TestCase):
         perf_info = self.db_engine.get_performance_info()
 
         # Check structure
-        self.assertIn("engine_stats", perf_info)
-        self.assertIn("performance_metrics", perf_info)
-        self.assertIn("requests", perf_info["engine_stats"])
-        self.assertIn("error_rate_percent", perf_info["performance_metrics"])
+        assert "engine_stats" in perf_info
+        assert "performance_metrics" in perf_info
+        assert "requests" in perf_info["engine_stats"]
+        assert "error_rate_percent" in perf_info["performance_metrics"]
 
         # Perform operations and check metrics change
         initial_requests = perf_info["engine_stats"]["requests"]
@@ -414,43 +388,41 @@ class TestDbEngineCoverage(unittest.TestCase):
         self.db_engine.fetch("SELECT 2")
 
         updated_perf_info = self.db_engine.get_performance_info()
-        self.assertGreater(updated_perf_info["engine_stats"]["requests"], initial_requests)
+        assert updated_perf_info["engine_stats"]["requests"] > initial_requests
 
         # Error rate should stay 0 for successful operations
-        self.assertEqual(updated_perf_info["performance_metrics"]["error_rate_percent"], 0.0)
+        assert updated_perf_info["performance_metrics"]["error_rate_percent"] == 0.0
 
     @pytest.mark.unit
     def test_execute_many_fetch(self) -> None:
         """Test execute_many with fetch operations."""
         # Insert test data for fetch operations
-        self.db_engine.execute("""
-            INSERT INTO test_users (name, email, active) 
+        self.db_engine.execute(
+            """
+            INSERT INTO test_users (name, email, active)
             VALUES ('Test User 1', 'test1@example.com', 1)
-        """)
-        self.db_engine.execute("""
-            INSERT INTO test_users (name, email, active) 
+        """
+        )
+        self.db_engine.execute(
+            """
+            INSERT INTO test_users (name, email, active)
             VALUES ('Test User 2', 'test2@example.com', 1)
-        """)
-
-        # Execute many fetch operations
-        params_list = [
-            {"name": "Test User 1"},
-            {"name": "Test User 2"}
-        ]
-
-        results = self.db_engine.execute_many(
-            "SELECT * FROM test_users WHERE name = :name",
-            params_list
+        """
         )
 
+        # Execute many fetch operations
+        params_list = [{"name": "Test User 1"}, {"name": "Test User 2"}]
+
+        results = self.db_engine.execute_many("SELECT * FROM test_users WHERE name = :name", params_list)
+
         # Should have 2 results
-        self.assertEqual(len(results), 2)
+        assert len(results) == 2
 
         # Each result should have data
         for result in results:
-            self.assertIsInstance(result, DbResult)
-            self.assertIsNotNone(result.data)
-            self.assertEqual(len(result.data), 1)  # One row per query
+            assert isinstance(result, DbResult)
+            assert result.data is not None
+            assert len(result.data) == 1  # One row per query
 
     @pytest.mark.unit
     def test_execute_many_execute(self) -> None:
@@ -459,27 +431,27 @@ class TestDbEngineCoverage(unittest.TestCase):
         params_list = [
             {"name": "Bulk User 1", "email": "bulk1@example.com", "active": 1},
             {"name": "Bulk User 2", "email": "bulk2@example.com", "active": 1},
-            {"name": "Bulk User 3", "email": "bulk3@example.com", "active": 0}
+            {"name": "Bulk User 3", "email": "bulk3@example.com", "active": 0},
         ]
 
         results = self.db_engine.execute_many(
             "INSERT INTO test_users (name, email, active) VALUES (:name, :email, :active)",
-            params_list
+            params_list,
         )
 
         # Should have 3 results
-        self.assertEqual(len(results), 3)
+        assert len(results) == 3
 
         # Each result should have rowcount=1
         for result in results:
-            self.assertIsInstance(result, DbResult)
-            self.assertEqual(result.rowcount, 1)
-            self.assertTrue(result.result)
+            assert isinstance(result, DbResult)
+            assert result.rowcount == 1
+            assert result.result
 
         # Verify total rows were inserted
         count_result = self.db_engine.fetch("SELECT COUNT(*) as count FROM test_users")
         total_count = count_result.data[0]["count"]
-        self.assertGreaterEqual(total_count, 6)  # Original 3 + new 3
+        assert total_count >= 6  # Original 3 + new 3
 
     @pytest.mark.unit
     def test_batch_and_script_mapping(self) -> None:
@@ -497,23 +469,23 @@ class TestDbEngineCoverage(unittest.TestCase):
         batch_results = self.db_engine.batch(script_sql)
 
         # Should have results for each statement
-        self.assertGreater(len(batch_results), 0)
+        assert len(batch_results) > 0
 
         # Each result should have operation type
         for result in batch_results:
-            self.assertIn(result["operation"], {"execute", "fetch"})
+            assert result["operation"] in {"execute", "fetch"}
             if result["operation"] == "fetch":
-                self.assertIsNotNone(result["result"].data)
+                assert result["result"].data is not None
 
         # Test script execution
         script_results = self.db_engine.script(script_sql)
 
         # Should have same number of results
-        self.assertEqual(len(script_results), len(batch_results))
+        assert len(script_results) == len(batch_results)
 
         # Each result should have operation type
         for result in script_results:
-            self.assertIn(result["operation"], {"execute", "fetch"})
+            assert result["operation"] in {"execute", "fetch"}
 
     @pytest.mark.unit
     def test_maintenance_operations(self) -> None:
@@ -529,19 +501,19 @@ class TestDbEngineCoverage(unittest.TestCase):
 
         # Integrity check should return list
         issues = self.db_engine.integrity_check()
-        self.assertIsInstance(issues, list)
+        assert isinstance(issues, list)
 
     @pytest.mark.unit
     def test_get_sqlite_info_file_vs_memory(self) -> None:
         """Test get_sqlite_info with file vs memory databases."""
         # Memory DB info
         memory_info = self.db_engine.get_sqlite_info()
-        self.assertIn('version', memory_info)
-        self.assertIn('database_size', memory_info)
+        assert "version" in memory_info
+        assert "database_size" in memory_info
         # Database size might be None for in-memory
 
         # File DB info
-        temp_db = tempfile.NamedTemporaryFile(delete=False, suffix='.db')
+        temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
         temp_db.close()
         try:
             file_db = DbEngine(f"sqlite:///{temp_db.name}")
@@ -551,11 +523,11 @@ class TestDbEngineCoverage(unittest.TestCase):
             file_db.execute("INSERT INTO test (id) VALUES (1)")
 
             file_info = file_db.get_sqlite_info()
-            self.assertIn('version', file_info)
-            self.assertIn('database_size', file_info)
+            assert "version" in file_info
+            assert "database_size" in file_info
 
             # File DB should have a size
-            self.assertIsInstance(file_info['database_size'], int)
+            assert isinstance(file_info["database_size"], int)
 
             file_db.shutdown()
         finally:
@@ -564,9 +536,3 @@ class TestDbEngineCoverage(unittest.TestCase):
                 os.unlink(temp_db.name)
             except OSError:
                 pass
-
-
-
-
-if __name__ == '__main__':
-    unittest.main()

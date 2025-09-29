@@ -12,7 +12,6 @@ import os
 import tempfile
 import threading
 import time
-import unittest
 
 import pytest
 from sqlalchemy import text
@@ -21,34 +20,23 @@ from jpy_sync_db_lite.db_engine import DbEngine
 from jpy_sync_db_lite.errors import MaintenanceError
 
 
-class TestDbEngineSQLiteSpecific(unittest.TestCase):
+class TestDbEngineSQLiteSpecific:
     """Test cases for SQLite-specific DbEngine functionality."""
 
-    def setUp(self):
+    @pytest.fixture(autouse=True)
+    def setup_method(self):
         """Set up test fixtures before each test method."""
-        # Create temporary database file
-        self.temp_db_fd, self.temp_db_path = tempfile.mkstemp(suffix='.db')
+        self.temp_db_fd, self.temp_db_path = tempfile.mkstemp(suffix=".db")
         os.close(self.temp_db_fd)
         self.database_url = f"sqlite:///{self.temp_db_path}"
-
-        # Initialize DbEngine with SQLite-specific settings
-        self.db_engine = DbEngine(
-            self.database_url,
-            timeout=30,
-            check_same_thread=False
-        )
-
-        # Create test table
+        self.db_engine = DbEngine(self.database_url, timeout=30, check_same_thread=False)
         self._create_test_table()
         self._insert_test_data()
-
-    def tearDown(self):
+        yield
         """Clean up after each test method."""
-        if hasattr(self, 'db_engine'):
+        if hasattr(self, "db_engine"):
             self.db_engine.shutdown()
             time.sleep(0.1)
-
-        # Remove temporary database file
         if os.path.exists(self.temp_db_path):
             try:
                 os.unlink(self.temp_db_path)
@@ -77,7 +65,7 @@ class TestDbEngineSQLiteSpecific(unittest.TestCase):
         test_data = [
             {"name": "Alice Johnson", "email": "alice@example.com", "active": True},
             {"name": "Bob Smith", "email": "bob@example.com", "active": False},
-            {"name": "Charlie Brown", "email": "charlie@example.com", "active": True}
+            {"name": "Charlie Brown", "email": "charlie@example.com", "active": True},
         ]
         insert_sql = """
         INSERT INTO test_users (name, email, active)
@@ -88,14 +76,9 @@ class TestDbEngineSQLiteSpecific(unittest.TestCase):
     @pytest.mark.unit
     def test_init_with_sqlite_parameters(self):
         """Test DbEngine initialization with SQLite-specific parameters."""
-        db = DbEngine(
-            self.database_url,
-            timeout=60,
-            check_same_thread=True,
-            debug=True
-        )
+        db = DbEngine(self.database_url, timeout=60, check_same_thread=True, debug=True)
 
-        self.assertIsNotNone(db.engine)
+        assert db.engine is not None
         db.shutdown()
 
     @pytest.mark.unit
@@ -109,21 +92,21 @@ class TestDbEngineSQLiteSpecific(unittest.TestCase):
     def test_configure_pragma(self):
         """Test configuring SQLite PRAGMA settings."""
         # Test setting cache size
-        self.db_engine.configure_pragma('cache_size', '-32000')  # 32MB cache
+        self.db_engine.configure_pragma("cache_size", "-32000")  # 32MB cache
 
         # Verify the setting was applied
         with self.db_engine.get_raw_connection() as conn:
             result = conn.execute(text("PRAGMA cache_size"))
             cache_size = result.fetchone()[0]
-            self.assertEqual(cache_size, -32000)
+            assert cache_size == -32000
 
         # Test setting synchronous mode
-        self.db_engine.configure_pragma('synchronous', 'FULL')
+        self.db_engine.configure_pragma("synchronous", "FULL")
 
         with self.db_engine.get_raw_connection() as conn:
             result = conn.execute(text("PRAGMA synchronous"))
             synchronous = result.fetchone()[0]
-            self.assertEqual(synchronous, 2)  # FULL mode
+            assert synchronous == 2  # FULL mode
 
     @pytest.mark.unit
     def test_get_sqlite_info(self):
@@ -131,30 +114,30 @@ class TestDbEngineSQLiteSpecific(unittest.TestCase):
         info = self.db_engine.get_sqlite_info()
 
         # Check required fields
-        self.assertIn('version', info)
-        self.assertIn('database_size', info)
-        self.assertIn('page_count', info)
-        self.assertIn('page_size', info)
-        self.assertIn('cache_size', info)
-        self.assertIn('journal_mode', info)
-        self.assertIn('synchronous', info)
-        self.assertIn('temp_store', info)
+        assert "version" in info
+        assert "database_size" in info
+        assert "page_count" in info
+        assert "page_size" in info
+        assert "cache_size" in info
+        assert "journal_mode" in info
+        assert "synchronous" in info
+        assert "temp_store" in info
 
         # Verify SQLite version is a string
-        self.assertIsInstance(info['version'], str)
-        self.assertGreater(len(info['version']), 0)
+        assert isinstance(info["version"], str)
+        assert len(info["version"]) > 0
 
         # Verify database size is a number (if available)
-        if info['database_size'] is not None:
-            self.assertIsInstance(info['database_size'], int)
-            self.assertGreater(info['database_size'], 0)
+        if info["database_size"] is not None:
+            assert isinstance(info["database_size"], int)
+            assert info["database_size"] > 0
 
         # Verify pragma values are reasonable (behavior, not exact implementation)
-        self.assertIsInstance(info['page_size'], int)
-        self.assertGreater(info['page_size'], 0)
-        self.assertIn(info['journal_mode'], ['wal', 'memory'])
-        self.assertIn(info['synchronous'], [0, 1, 2])  # OFF, NORMAL, FULL
-        self.assertIn(info['temp_store'], [0, 1, 2])   # DEFAULT, FILE, MEMORY
+        assert isinstance(info["page_size"], int)
+        assert info["page_size"] > 0
+        assert info["journal_mode"] in ["wal", "memory"]
+        assert info["synchronous"] in [0, 1, 2]  # OFF, NORMAL, FULL
+        assert info["temp_store"] in [0, 1, 2]  # DEFAULT, FILE, MEMORY
 
     @pytest.mark.integration
     def test_vacuum_operation(self):
@@ -164,22 +147,22 @@ class TestDbEngineSQLiteSpecific(unittest.TestCase):
 
         # Get initial database size
         initial_info = self.db_engine.get_sqlite_info()
-        initial_size = initial_info['database_size']
+        initial_info["database_size"]
 
         # Run VACUUM (SQLite VACUUM doesn't support mode parameters)
         self.db_engine.vacuum()
 
         # Get database size after VACUUM
         final_info = self.db_engine.get_sqlite_info()
-        final_size = final_info['database_size']
+        final_size = final_info["database_size"]
 
         # Only assert if not in-memory and file exists
         if final_size is not None:
-            self.assertIsInstance(final_size, int)
+            assert isinstance(final_size, int)
 
         # Verify data integrity after VACUUM
         users = self.db_engine.fetch("SELECT * FROM test_users")
-        self.assertEqual(len(users.data), 2)  # Should have 2 users remaining
+        assert len(users.data) == 2  # Should have 2 users remaining
 
     @pytest.mark.unit
     def test_analyze_operation(self):
@@ -189,17 +172,17 @@ class TestDbEngineSQLiteSpecific(unittest.TestCase):
 
         # Should not raise an exception
         users = self.db_engine.fetch("SELECT * FROM test_users")
-        self.assertEqual(len(users.data), 3)
+        assert len(users.data) == 3
 
     @pytest.mark.unit
     def test_analyze_specific_table(self):
         """Test ANALYZE operation on specific table."""
         # Run ANALYZE on specific table
-        self.db_engine.analyze(table_name='test_users')
+        self.db_engine.analyze(table_name="test_users")
 
         # Should not raise an exception
         users = self.db_engine.fetch("SELECT * FROM test_users")
-        self.assertEqual(len(users.data), 3)
+        assert len(users.data) == 3
 
     @pytest.mark.unit
     def test_integrity_check(self):
@@ -208,8 +191,8 @@ class TestDbEngineSQLiteSpecific(unittest.TestCase):
         issues = self.db_engine.integrity_check()
 
         # Should return empty list for healthy database
-        self.assertIsInstance(issues, list)
-        self.assertEqual(len(issues), 0)
+        assert isinstance(issues, list)
+        assert len(issues) == 0
 
     @pytest.mark.unit
     def test_integrity_check_with_corruption(self):
@@ -220,10 +203,10 @@ class TestDbEngineSQLiteSpecific(unittest.TestCase):
 
         # Run integrity check on healthy database
         issues = self.db_engine.integrity_check()
-        self.assertEqual(len(issues), 0)
+        assert len(issues) == 0
 
         # Verify the method returns a list even if there are issues
-        self.assertIsInstance(issues, list)
+        assert isinstance(issues, list)
 
     @pytest.mark.unit
     def test_optimize_operation(self):
@@ -233,19 +216,19 @@ class TestDbEngineSQLiteSpecific(unittest.TestCase):
 
         # Should not raise an exception
         users = self.db_engine.fetch("SELECT * FROM test_users")
-        self.assertEqual(len(users.data), 3)
+        assert len(users.data) == 3
 
     @pytest.mark.unit
     def test_get_raw_connection_exception(self):
-        with self.assertRaises(Exception):
+        with pytest.raises(Exception):
             with self.db_engine.get_raw_connection() as conn:
                 conn.execute(text("INVALID SQL"))
 
     @pytest.mark.unit
     def test_analyze_error_wrapping(self):
         # Pass an invalid table name to reliably trigger an error
-        with self.assertRaises(MaintenanceError):
-            self.db_engine.analyze(table_name='this_table_does_not_exist')
+        with pytest.raises(MaintenanceError):
+            self.db_engine.analyze(table_name="this_table_does_not_exist")
 
     @pytest.mark.unit
     def test_maintenance_operations_error_wrapping(self):
@@ -254,7 +237,10 @@ class TestDbEngineSQLiteSpecific(unittest.TestCase):
         maintenance_operations = [
             (self.db_engine.vacuum, "VACUUM operation failed"),
             (lambda: self.db_engine.analyze(), "ANALYZE operation failed"),
-            (lambda: self.db_engine.analyze(table_name='test_users'), "ANALYZE operation failed"),
+            (
+                lambda: self.db_engine.analyze(table_name="test_users"),
+                "ANALYZE operation failed",
+            ),
             (lambda: self.db_engine.integrity_check(), "Integrity check failed"),
             (self.db_engine.optimize, "Optimization operation failed"),
         ]
@@ -265,8 +251,8 @@ class TestDbEngineSQLiteSpecific(unittest.TestCase):
                 # If operation succeeds, that's fine - we're just testing error wrapping
             except MaintenanceError as e:
                 # If an error occurs, it should be wrapped in MaintenanceError
-                self.assertIsInstance(e, MaintenanceError)
-                self.assertIn(expected_error_text, str(e))
+                assert isinstance(e, MaintenanceError)
+                assert expected_error_text in str(e)
 
     @pytest.mark.unit
     def test_enhanced_performance_configuration(self):
@@ -275,18 +261,18 @@ class TestDbEngineSQLiteSpecific(unittest.TestCase):
             # Check foreign keys are enabled
             result = conn.execute(text("PRAGMA foreign_keys"))
             foreign_keys = result.fetchone()[0]
-            self.assertEqual(foreign_keys, 1)
+            assert foreign_keys == 1
 
             # Check busy timeout
             result = conn.execute(text("PRAGMA busy_timeout"))
             busy_timeout = result.fetchone()[0]
-            self.assertEqual(busy_timeout, 30000)  # 30 seconds
+            assert busy_timeout == 30000  # 30 seconds
 
             # Check auto vacuum (may not be set if database already exists)
             result = conn.execute(text("PRAGMA auto_vacuum"))
             auto_vacuum = result.fetchone()[0]
             # Auto vacuum can be 0 (NONE), 1 (FULL), or 2 (INCREMENTAL)
-            self.assertIn(auto_vacuum, [0, 1, 2])
+            assert auto_vacuum in [0, 1, 2]
 
     @pytest.mark.unit
     def test_connection_parameters(self):
@@ -295,16 +281,16 @@ class TestDbEngineSQLiteSpecific(unittest.TestCase):
         db = DbEngine(
             self.database_url,
             timeout=60,
-            check_same_thread=False  # Must be False for threading
+            check_same_thread=False,  # Must be False for threading
         )
 
         # Verify the engine was created successfully
-        self.assertIsNotNone(db.engine)
+        assert db.engine is not None
 
         # Test that operations work with custom parameters
         result = db.fetch("SELECT 1 as test", params={})
-        self.assertEqual(len(result.data), 1)
-        self.assertEqual(result.data[0]['test'], 1)
+        assert len(result.data) == 1
+        assert result.data[0]["test"] == 1
 
         db.shutdown()
 
@@ -313,18 +299,18 @@ class TestDbEngineSQLiteSpecific(unittest.TestCase):
         """Test PRAGMA configuration with edge cases."""
         # Test invalid PRAGMA name (should not crash)
         try:
-            self.db_engine.configure_pragma('invalid_pragma', 'value')
+            self.db_engine.configure_pragma("invalid_pragma", "value")
         except Exception as e:
             # Should handle gracefully
-            self.assertIsInstance(e, Exception)
+            assert isinstance(e, Exception)
 
         # Test numeric PRAGMA value (skip empty value test)
-        self.db_engine.configure_pragma('cache_size', '1000')
+        self.db_engine.configure_pragma("cache_size", "1000")
 
         with self.db_engine.get_raw_connection() as conn:
             result = conn.execute(text("PRAGMA cache_size"))
             cache_size = result.fetchone()[0]
-            self.assertEqual(cache_size, 1000)
+            assert cache_size == 1000
 
     @pytest.mark.unit
     def test_sqlite_info_edge_cases(self):
@@ -335,11 +321,11 @@ class TestDbEngineSQLiteSpecific(unittest.TestCase):
         info = memory_db.get_sqlite_info()
 
         # Should still get version and other info
-        self.assertIn('version', info)
-        self.assertIsInstance(info['version'], str)
+        assert "version" in info
+        assert isinstance(info["version"], str)
 
         # Database size might be None for in-memory
-        self.assertIn('database_size', info)
+        assert "database_size" in info
 
         memory_db.shutdown()
 
@@ -355,12 +341,12 @@ class TestDbEngineSQLiteSpecific(unittest.TestCase):
                 # Each worker performs SQLite-specific operations
                 for i in range(2):  # Reduced iterations
                     # Configure pragma (use different values to avoid conflicts)
-                    pragma_value = f'-{16000 + worker_id * 1000 + i}'
-                    self.db_engine.configure_pragma('cache_size', pragma_value)
+                    pragma_value = f"-{16000 + worker_id * 1000 + i}"
+                    self.db_engine.configure_pragma("cache_size", pragma_value)
 
                     # Get SQLite info (read-only operation)
                     info = self.db_engine.get_sqlite_info()
-                    results.append(info['version'])
+                    results.append(info["version"])
 
                     # Run analyze (should be safe for concurrent access)
                     self.db_engine.analyze()
@@ -382,13 +368,9 @@ class TestDbEngineSQLiteSpecific(unittest.TestCase):
             thread.join(timeout=10)  # 10 second timeout
 
         # Verify no errors occurred
-        self.assertEqual(len(errors), 0, f"Errors occurred: {errors}")
-        self.assertGreater(len(results), 0)
+        assert len(errors) == 0
+        assert len(results) > 0
 
         # All results should be the same SQLite version
         unique_versions = set(results)
-        self.assertEqual(len(unique_versions), 1)
-
-
-if __name__ == '__main__':
-    unittest.main()
+        assert len(unique_versions) == 1

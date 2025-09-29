@@ -31,10 +31,7 @@ def _create_schema(db: DbEngine) -> None:
 
 
 def _gen_rows(n: int) -> list[dict[str, Any]]:
-    return [
-        {"name": f"User{i}", "value": i, "data": f"Data {i}"}
-        for i in range(n)
-    ]
+    return [{"name": f"User{i}", "value": i, "data": f"Data {i}"} for i in range(n)]
 
 
 @pytest.mark.performance
@@ -44,7 +41,7 @@ def test_connection_health_and_basic_ops_loop() -> None:
 
         iterations = 200
         start = time.time()
-        for i in range(iterations):
+        for _i in range(iterations):
             assert db.check_connection_health() is True
             res = db.fetch("SELECT 1 as one")
             assert res.data and res.data[0]["one"] == 1
@@ -69,7 +66,11 @@ def test_small_single_insert_throughput() -> None:
         for i in range(ops):
             db.execute(
                 "INSERT INTO benchmark_test (name, value, data) VALUES (:name, :value, :data)",
-                params={"name": f"Benchmark{i}", "value": i, "data": f"Benchmark data {i}"},
+                params={
+                    "name": f"Benchmark{i}",
+                    "value": i,
+                    "data": f"Benchmark data {i}",
+                },
             )
         total = time.time() - start
         throughput = ops / total if total > 0 else float("inf")
@@ -133,4 +134,3 @@ def test_concurrent_mixed_ops_threaded() -> None:
                     errors.append(str(e))
 
         assert not errors
-

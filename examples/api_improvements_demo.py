@@ -20,7 +20,7 @@ from jpy_sync_db_lite import DbEngine
 def main():
     """Demonstrate the new API improvements."""
     # Create a temporary database
-    temp_db = tempfile.NamedTemporaryFile(delete=False, suffix='.db')
+    temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
     temp_db.close()
     database_url = f"sqlite:///{temp_db.name}"
 
@@ -39,7 +39,7 @@ def main():
                 department TEXT,
                 active BOOLEAN DEFAULT 1
             );
-            
+
             CREATE INDEX idx_users_department ON users(department);
             CREATE INDEX idx_users_active ON users(active);
         """
@@ -58,8 +58,7 @@ def main():
         ]
 
         results = db.execute_many(
-            "INSERT INTO users (name, email, department) VALUES (:name, :email, :department)",
-            users
+            "INSERT INTO users (name, email, department) VALUES (:name, :email, :department)", users
         )
         print(f"   Inserted {len(results)} users in a single transaction")
 
@@ -76,8 +75,7 @@ def main():
         ]
 
         dept_results = db.execute_many(
-            "SELECT name, email FROM users WHERE department = :dept ORDER BY name",
-            departments
+            "SELECT name, email FROM users WHERE department = :dept ORDER BY name", departments
         )
 
         for i, (dept, result) in enumerate(zip(departments, dept_results, strict=False)):
@@ -94,13 +92,13 @@ def main():
                 # Promote Alice to manager
                 tx.execute(
                     "UPDATE users SET department = :new_dept WHERE email = :email",
-                    {"new_dept": "Management", "email": "alice@company.com"}
+                    {"new_dept": "Management", "email": "alice@company.com"},
                 )
 
                 # Add a new team member to replace Alice in Engineering
                 tx.execute(
                     "INSERT INTO users (name, email, department) VALUES (:name, :email, :department)",
-                    {"name": "Frank Miller", "email": "frank@company.com", "department": "Engineering"}
+                    {"name": "Frank Miller", "email": "frank@company.com", "department": "Engineering"},
                 )
 
                 # Log the change (fetch within transaction)
@@ -124,13 +122,13 @@ def main():
             with db.transaction() as tx:
                 tx.execute(
                     "INSERT INTO users (name, email, department) VALUES (:name, :email, :department)",
-                    {"name": "Grace Hopper", "email": "grace@company.com", "department": "Engineering"}
+                    {"name": "Grace Hopper", "email": "grace@company.com", "department": "Engineering"},
                 )
 
                 # This will fail due to duplicate email
                 tx.execute(
                     "INSERT INTO users (name, email, department) VALUES (:name, :email, :department)",
-                    {"name": "Duplicate", "email": "alice@company.com", "department": "Engineering"}
+                    {"name": "Duplicate", "email": "alice@company.com", "department": "Engineering"},
                 )
 
         except Exception as e:
@@ -162,7 +160,7 @@ def main():
 
         print(f"   Individual operations (100 inserts): {individual_time:.3f}s")
         print(f"   Bulk operation (100 inserts): {bulk_time:.3f}s")
-        print(f"   Bulk is {individual_time/bulk_time:.1f}x faster")
+        print(f"   Bulk is {individual_time / bulk_time:.1f}x faster")
 
         # Final stats
         print("\n=== Final Statistics ===")

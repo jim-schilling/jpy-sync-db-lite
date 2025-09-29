@@ -30,10 +30,7 @@ INVALID_SQL_STATEMENTS = [
 TEST_DATABASE_CONFIGS = {
     "sqlite": {
         "engine": "sqlite",
-        "connection": {
-            "database": ":memory:",
-            "echo": False
-        }
+        "connection": {"database": ":memory:", "echo": False},
     },
     "postgresql": {
         "engine": "postgresql",
@@ -42,8 +39,8 @@ TEST_DATABASE_CONFIGS = {
             "port": 5432,
             "database": "test_db",
             "username": "test_user",
-            "password": "test_pass"
-        }
+            "password": "test_pass",
+        },
     },
     "mysql": {
         "engine": "mysql",
@@ -52,45 +49,33 @@ TEST_DATABASE_CONFIGS = {
             "port": 3306,
             "database": "test_db",
             "username": "test_user",
-            "password": "test_pass"
-        }
-    }
+            "password": "test_pass",
+        },
+    },
 }
 
 TEST_LOGGING_CONFIGS = {
-    "basic": {
-        "level": "INFO",
-        "format": "text",
-        "file": None
-    },
-    "json": {
-        "level": "DEBUG",
-        "format": "json",
-        "file": "test.log"
-    },
-    "detailed": {
-        "level": "WARNING",
-        "format": "detailed",
-        "file": "detailed.log"
-    }
+    "basic": {"level": "INFO", "format": "text", "file": None},
+    "json": {"level": "DEBUG", "format": "json", "file": "test.log"},
+    "detailed": {"level": "WARNING", "format": "detailed", "file": "detailed.log"},
 }
 
 TEST_SECURITY_CONFIGS = {
     "permissive": {
         "validate_sql": False,
         "allowed_commands": ["SELECT", "INSERT", "UPDATE", "DELETE"],
-        "blocked_patterns": []
+        "blocked_patterns": [],
     },
     "restrictive": {
         "validate_sql": True,
         "allowed_commands": ["SELECT"],
-        "blocked_patterns": ["DROP", "TRUNCATE", "DELETE", "UPDATE", "INSERT"]
+        "blocked_patterns": ["DROP", "TRUNCATE", "DELETE", "UPDATE", "INSERT"],
     },
     "moderate": {
         "validate_sql": True,
         "allowed_commands": ["SELECT", "INSERT", "UPDATE", "DELETE"],
-        "blocked_patterns": ["DROP", "TRUNCATE"]
-    }
+        "blocked_patterns": ["DROP", "TRUNCATE"],
+    },
 }
 
 
@@ -101,13 +86,13 @@ class TestDataBuilder:
     def create_config_data(
         database_config: dict[str, Any] | None = None,
         logging_config: dict[str, Any] | None = None,
-        security_config: dict[str, Any] | None = None
+        security_config: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Create a complete configuration data structure."""
         return {
             "database": database_config or TEST_DATABASE_CONFIGS["sqlite"],
             "logging": logging_config or TEST_LOGGING_CONFIGS["basic"],
-            "security": security_config or TEST_SECURITY_CONFIGS["moderate"]
+            "security": security_config or TEST_SECURITY_CONFIGS["moderate"],
         }
 
     @staticmethod
@@ -141,7 +126,7 @@ class TestFileHelper:
     @staticmethod
     def create_temp_file(content: str, suffix: str = ".txt") -> Path:
         """Create a temporary file with specified content."""
-        temp_file = tempfile.NamedTemporaryFile(mode='w', suffix=suffix, delete=False)
+        temp_file = tempfile.NamedTemporaryFile(mode="w", suffix=suffix, delete=False)
         temp_file.write(content)
         temp_file.close()
         return Path(temp_file.name)
@@ -183,13 +168,13 @@ class TestAssertions:
     def assert_sql_statements_valid(statements: list[str]) -> None:
         """Assert that SQL statements are valid."""
         for statement in statements:
-            assert statement.strip().endswith(';')
+            assert statement.strip().endswith(";")
             assert len(statement.strip()) > 0
 
     @staticmethod
     def assert_error_has_context(error: Exception, expected_context: dict[str, Any]) -> None:
         """Assert that an error has the expected context."""
-        if hasattr(error, 'context'):
+        if hasattr(error, "context"):
             for key, value in expected_context.items():
                 assert key in error.context
                 assert error.context[key] == value
@@ -220,7 +205,15 @@ class TestConstants:
     LOG_LEVELS = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 
     # SQL commands
-    SQL_COMMANDS = ["SELECT", "INSERT", "UPDATE", "DELETE", "CREATE", "DROP", "TRUNCATE"]
+    SQL_COMMANDS = [
+        "SELECT",
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "CREATE",
+        "DROP",
+        "TRUNCATE",
+    ]
 
     # Error messages
     ERROR_MESSAGES = {
@@ -228,5 +221,5 @@ class TestConstants:
         "invalid_sql": "Invalid SQL statement",
         "connection_failed": "Database connection failed",
         "permission_denied": "Permission denied",
-        "timeout": "Operation timed out"
+        "timeout": "Operation timed out",
     }

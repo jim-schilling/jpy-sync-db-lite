@@ -11,7 +11,6 @@ This module is licensed under the MIT License.
 import re
 import threading
 import time
-import unittest
 
 import pytest
 from sqlalchemy import text
@@ -20,32 +19,28 @@ from jpy_sync_db_lite.db_engine import DbEngine
 from jpy_sync_db_lite.errors import OperationError
 
 
-class TestDbEngineCore(unittest.TestCase):
+class TestDbEngineCore:
     """Core test cases for DbEngine class."""
+
+    @pytest.fixture(autouse=True)
+    def setup_method(self):
+        """Set up test fixtures before each test method."""
+        self.database_url = "sqlite:///:memory:"
+        self.db_engine = DbEngine(self.database_url, timeout=30, check_same_thread=False)
+        self._create_test_table()
+        self._insert_test_data()
+        yield
+        """Clean up after each test method."""
+        if hasattr(self, "db_engine"):
+            self.db_engine.shutdown()
 
     @staticmethod
     def normalize_sql(sql: str) -> str:
         """Normalize SQL by collapsing all whitespace, removing spaces after '(' and before ')', and stripping ends."""
-        sql = re.sub(r'\s+', ' ', sql).strip()
-        sql = re.sub(r'\(\s+', '(', sql)
-        sql = re.sub(r'\s+\)', ')', sql)
+        sql = re.sub(r"\s+", " ", sql).strip()
+        sql = re.sub(r"\(\s+", "(", sql)
+        sql = re.sub(r"\s+\)", ")", sql)
         return sql
-
-    def setUp(self) -> None:
-        """Set up test fixtures before each test method."""
-        self.database_url = "sqlite:///:memory:"
-        self.db_engine = DbEngine(
-            self.database_url,
-            timeout=30,
-            check_same_thread=False
-        )
-        self._create_test_table()
-        self._insert_test_data()
-
-    def tearDown(self) -> None:
-        """Clean up after each test method."""
-        if hasattr(self, 'db_engine'):
-            self.db_engine.shutdown()
 
     def _cleanup_all_tables(self) -> None:
         """Clean up all tables to ensure test isolation."""
@@ -57,7 +52,7 @@ class TestDbEngineCore(unittest.TestCase):
 
                 # Drop all tables (except sqlite_master)
                 for table in tables:
-                    if table != 'sqlite_master':
+                    if table != "sqlite_master":
                         conn.execute(text(f"DROP TABLE IF EXISTS {table}"))
                 conn.commit()
         except Exception:
@@ -82,7 +77,7 @@ class TestDbEngineCore(unittest.TestCase):
         test_data = [
             {"name": "Alice Johnson", "email": "alice@example.com", "active": True},
             {"name": "Bob Smith", "email": "bob@example.com", "active": False},
-            {"name": "Charlie Brown", "email": "charlie@example.com", "active": True}
+            {"name": "Charlie Brown", "email": "charlie@example.com", "active": True},
         ]
         insert_sql = """
         INSERT INTO test_users (name, email, active)
@@ -96,18 +91,13 @@ class TestDbEngineCore(unittest.TestCase):
         db = DbEngine(self.database_url)
         # Ensure initialization does not raise and basic operations work
         result = db.fetch("SELECT 1 as test")
-        self.assertEqual(result.data[0]["test"], 1)
+        assert result.data[0]["test"] == 1
         db.shutdown()
 
     @pytest.mark.unit
     def test_init_with_custom_parameters(self) -> None:
         """Test DbEngine initialization with custom parameters. Number of workers is always 1."""
-        db = DbEngine(
-            self.database_url,
-            debug=True,
-            timeout=60,
-            check_same_thread=True
-        )
+        db = DbEngine(self.database_url, debug=True, timeout=60, check_same_thread=True)
 
         db.shutdown()
 
@@ -118,73 +108,73 @@ class TestDbEngineCore(unittest.TestCase):
             # Journal mode behavior by DB type
             result = conn.execute(text("PRAGMA journal_mode"))
             journal_mode = result.fetchone()[0]
-            self.assertIn(journal_mode, ["wal", "memory"])  # file DBs: wal; in-memory: memory
+            assert journal_mode in ["wal", "memory"]  # file DBs: wal; in-memory: memory
 
             # Synchronous should be a valid mode (0 OFF, 1 NORMAL, 2 FULL)
             result = conn.execute(text("PRAGMA synchronous"))
             synchronous = result.fetchone()[0]
-            self.assertIn(synchronous, [0, 1, 2])
+            assert synchronous in [0, 1, 2]
 
             # Cache size should be an int (do not assert exact value)
             result = conn.execute(text("PRAGMA cache_size"))
             cache_size = result.fetchone()[0]
-            self.assertIsInstance(cache_size, int)
+            assert isinstance(cache_size, int)
 
             # Temp store should be a valid mode (0 DEFAULT, 1 FILE, 2 MEMORY)
             result = conn.execute(text("PRAGMA temp_store"))
             temp_store = result.fetchone()[0]
-            self.assertIn(temp_store, [0, 1, 2])
+            assert temp_store in [0, 1, 2]
 
     @pytest.mark.unit
     def test_execute_simple_query(self) -> None:
         """Test execute returns rowcount for DML; SELECT validated via fetch."""
         # DML via execute
         result = self.db_engine.execute("UPDATE test_users SET active = 1 WHERE 1=1")
-        self.assertTrue(result.result)
-        self.assertIsInstance(result.rowcount, int)
-        self.assertGreaterEqual(result.rowcount, 0)
+        assert result.result
+        assert isinstance(result.rowcount, int)
+        assert result.rowcount >= 0
 
         # SELECT should be done via fetch
         fetched = self.db_engine.fetch("SELECT 1 as one")
-        self.assertEqual(fetched.data[0]["one"], 1)
+        assert fetched.data[0]["one"] == 1
 
     @pytest.mark.unit
     def test_execute_with_parameters(self) -> None:
         """Test query execution with parameters."""
         update_sql = "UPDATE test_users SET active = :active WHERE name = :name"
         self.db_engine.execute(update_sql, params={"active": False, "name": "Alice Johnson"})
-        users = self.db_engine.fetch("SELECT * FROM test_users WHERE name = :name", params={"name": "Alice Johnson"})
-        self.assertEqual(len(users.data), 1)
-        self.assertEqual(users.data[0]['active'], False)
+        users = self.db_engine.fetch(
+            "SELECT * FROM test_users WHERE name = :name",
+            params={"name": "Alice Johnson"},
+        )
+        assert len(users.data) == 1
+        assert not users.data[0]["active"]
 
     @pytest.mark.unit
     def test_fetch_simple_query(self) -> None:
         """Test simple fetch operation."""
         users = self.db_engine.fetch("SELECT * FROM test_users")
-        self.assertEqual(len(users.data), 3)
-        self.assertIsInstance(users.data, list)
-        self.assertIsInstance(users.data[0], dict)
+        assert len(users.data) == 3
+        assert isinstance(users.data, list)
+        assert isinstance(users.data[0], dict)
 
     @pytest.mark.unit
     def test_fetch_with_parameters(self) -> None:
         """Test fetch operation with parameters."""
-        active_users = self.db_engine.fetch(
-            "SELECT * FROM test_users WHERE active = :active",
-            params={"active": True}
-        )
-        self.assertEqual(len(active_users.data), 2)
+        active_users = self.db_engine.fetch("SELECT * FROM test_users WHERE active = :active", params={"active": True})
+        assert len(active_users.data) == 2
         for user in active_users.data:
-            self.assertTrue(user['active'])
+            assert user["active"]
 
     @pytest.mark.unit
     def test_fetch_empty_result(self) -> None:
         """Test fetch operation with no results."""
         users = self.db_engine.fetch(
             "SELECT * FROM test_users WHERE name = :name",
-            params={"name": "NonExistentUser"}
+            params={"name": "NonExistentUser"},
         )
-        self.assertEqual(len(users.data), 0)
-        self.assertIsInstance(users.data, list)
+        assert len(users.data) == 0
+        assert isinstance(users.data, list)
 
     @pytest.mark.unit
     def test_bulk_operations(self):
@@ -192,7 +182,7 @@ class TestDbEngineCore(unittest.TestCase):
         test_data = [
             {"name": "User1", "email": "user1@example.com", "active": True},
             {"name": "User2", "email": "user2@example.com", "active": False},
-            {"name": "User3", "email": "user3@example.com", "active": True}
+            {"name": "User3", "email": "user3@example.com", "active": True},
         ]
 
         insert_sql = """
@@ -201,11 +191,11 @@ class TestDbEngineCore(unittest.TestCase):
         """
 
         result = self.db_engine.execute(insert_sql, params=test_data)
-        self.assertEqual(result.rowcount, 3)
+        assert result.rowcount == 3
 
         # Verify data was inserted
         users = self.db_engine.fetch("SELECT * FROM test_users WHERE name LIKE 'User%'")
-        self.assertEqual(len(users.data), 3)
+        assert len(users.data) == 3
 
     @pytest.mark.unit
     def test_bulk_update_operations(self):
@@ -214,18 +204,18 @@ class TestDbEngineCore(unittest.TestCase):
         update_data = [
             {"id": 1, "active": False},
             {"id": 2, "active": True},
-            {"id": 3, "active": False}
+            {"id": 3, "active": False},
         ]
 
         update_sql = "UPDATE test_users SET active = :active WHERE id = :id"
         result = self.db_engine.execute(update_sql, params=update_data)
-        self.assertEqual(result.rowcount, 3)
+        assert result.rowcount == 3
 
         # Verify updates
         users = self.db_engine.fetch("SELECT * FROM test_users ORDER BY id")
-        self.assertEqual(users.data[0]['active'], False)
-        self.assertEqual(users.data[1]['active'], True)
-        self.assertEqual(users.data[2]['active'], False)
+        assert not users.data[0]["active"]
+        assert users.data[1]["active"]
+        assert not users.data[2]["active"]
 
     @pytest.mark.integration
     def test_execute_transaction_success(self):
@@ -234,21 +224,25 @@ class TestDbEngineCore(unittest.TestCase):
             {
                 "operation": "execute",
                 "query": "INSERT INTO test_users (name, email, active) VALUES (:name, :email, :active)",
-                "params": {"name": "TransactionUser", "email": "transaction@example.com", "active": True}
+                "params": {
+                    "name": "TransactionUser",
+                    "email": "transaction@example.com",
+                    "active": True,
+                },
             },
             {
                 "operation": "fetch",
                 "query": "SELECT COUNT(*) as count FROM test_users WHERE name = :name",
-                "params": {"name": "TransactionUser"}
-            }
+                "params": {"name": "TransactionUser"},
+            },
         ]
 
         results = self.db_engine.execute_transaction(operations)
-        self.assertEqual(len(results), 2)
-        self.assertEqual(results[0]["operation"], "execute")
-        self.assertTrue(results[0]["result"])
-        self.assertEqual(results[1]["operation"], "fetch")
-        self.assertEqual(results[1]["result"][0]["count"], 1)
+        assert len(results) == 2
+        assert results[0]["operation"] == "execute"
+        assert results[0]["result"]
+        assert results[1]["operation"] == "fetch"
+        assert results[1]["result"][0]["count"] == 1
 
     @pytest.mark.integration
     def test_execute_transaction_rollback(self):
@@ -258,36 +252,36 @@ class TestDbEngineCore(unittest.TestCase):
             {
                 "operation": "execute",
                 "query": "UPDATE test_users SET active = :active WHERE name = :name",
-                "params": {"active": False, "name": "Alice Johnson"}
+                "params": {"active": False, "name": "Alice Johnson"},
             },
             {
                 "operation": "execute",
                 "query": "UPDATE test_users SET invalid_column = :value WHERE name = :name",
-                "params": {"value": "test", "name": "Bob Smith"}
-            }
+                "params": {"value": "test", "name": "Bob Smith"},
+            },
         ]
 
         # This should raise an exception and rollback
-        with self.assertRaises(Exception):
+        with pytest.raises(Exception):
             self.db_engine.execute_transaction(operations)
 
         # Verify the first update was rolled back using the same connection context
         with self.db_engine.get_raw_connection() as conn:
             result = conn.execute(
                 text("SELECT active FROM test_users WHERE name = :name"),
-                {"name": "Alice Johnson"}
+                {"name": "Alice Johnson"},
             )
             user = [dict(row._mapping) for row in result.fetchall()]
-            self.assertEqual(len(user), 1)
-            self.assertEqual(user[0]['active'], True)  # Should still be True due to rollback
+            assert len(user) == 1
+            assert user[0]["active"]  # Should still be True due to rollback
 
     @pytest.mark.unit
     def test_get_raw_connection(self):
         """Test getting raw database connection."""
         with self.db_engine.get_raw_connection() as conn:
-            self.assertIsNotNone(conn)
+            assert conn is not None
             result = conn.execute(text("SELECT 1"))
-            self.assertIsNotNone(result)
+            assert result is not None
 
     @pytest.mark.unit
     def test_get_stats(self):
@@ -303,11 +297,11 @@ class TestDbEngineCore(unittest.TestCase):
         updated_stats = self.db_engine.get_stats()
 
         # Verify stats structure and that values increased
-        self.assertIn('requests', updated_stats)
-        self.assertIn('errors', updated_stats)
-        self.assertIsInstance(updated_stats['requests'], int)
-        self.assertIsInstance(updated_stats['errors'], int)
-        self.assertGreaterEqual(updated_stats['requests'], initial_stats['requests'])
+        assert "requests" in updated_stats
+        assert "errors" in updated_stats
+        assert isinstance(updated_stats["requests"], int)
+        assert isinstance(updated_stats["errors"], int)
+        assert updated_stats["requests"] >= initial_stats["requests"]
 
     @pytest.mark.integration
     def test_concurrent_operations(self):
@@ -320,13 +314,17 @@ class TestDbEngineCore(unittest.TestCase):
                 # Each worker performs multiple operations
                 for i in range(5):
                     # Fetch operation
-                    users = self.db_engine.fetch("SELECT * FROM test_users WHERE active = :active",
-                                               params={"active": True})
+                    users = self.db_engine.fetch(
+                        "SELECT * FROM test_users WHERE active = :active",
+                        params={"active": True},
+                    )
                     results.append(len(users.data))
 
                     # Execute operation
-                    self.db_engine.execute("UPDATE test_users SET name = :name WHERE id = :id",
-                                         params={"name": f"UpdatedUser{worker_id}_{i}", "id": 1})
+                    self.db_engine.execute(
+                        "UPDATE test_users SET name = :name WHERE id = :id",
+                        params={"name": f"UpdatedUser{worker_id}_{i}", "id": 1},
+                    )
 
                     time.sleep(0.01)  # Small delay to simulate work
 
@@ -345,25 +343,25 @@ class TestDbEngineCore(unittest.TestCase):
             thread.join()
 
         # Verify no errors occurred
-        self.assertEqual(len(errors), 0)
-        self.assertGreater(len(results), 0)
+        assert len(errors) == 0
+        assert len(results) > 0
 
     @pytest.mark.unit
     def test_error_handling_invalid_sql(self):
         """Test error handling for invalid SQL."""
-        with self.assertRaises(OperationError):
+        with pytest.raises(OperationError):
             self.db_engine.execute("INVALID SQL STATEMENT")
 
     @pytest.mark.unit
     def test_error_handling_missing_table(self):
         """Test error handling for queries on non-existent table."""
-        with self.assertRaises(OperationError):
+        with pytest.raises(OperationError):
             self.db_engine.fetch("SELECT * FROM non_existent_table")
 
     @pytest.mark.unit
     def test_error_handling_missing_parameter(self):
         """Test error handling for missing parameters."""
-        with self.assertRaises(OperationError):
+        with pytest.raises(OperationError):
             self.db_engine.fetch("SELECT * FROM test_users WHERE id = :id")
 
     @pytest.mark.unit
@@ -381,11 +379,13 @@ class TestDbEngineCore(unittest.TestCase):
         # Generate large dataset
         large_data = []
         for i in range(1000):
-            large_data.append({
-                "name": f"LargeUser{i}",
-                "email": f"largeuser{i}@example.com",
-                "active": i % 2 == 0
-            })
+            large_data.append(
+                {
+                    "name": f"LargeUser{i}",
+                    "email": f"largeuser{i}@example.com",
+                    "active": i % 2 == 0,
+                }
+            )
 
         insert_sql = """
         INSERT INTO test_users (name, email, active)
@@ -397,12 +397,12 @@ class TestDbEngineCore(unittest.TestCase):
         result = self.db_engine.execute(insert_sql, params=large_data)
         end_time = time.time()
 
-        self.assertEqual(result.rowcount, len(large_data))
-        self.assertLess(end_time - start_time, 10)  # Should complete within 10 seconds
+        assert result.rowcount == len(large_data)
+        assert end_time - start_time < 10  # Should complete within 10 seconds
 
         # Verify data was inserted
         count = self.db_engine.fetch("SELECT COUNT(*) as count FROM test_users WHERE name LIKE 'LargeUser%'")
-        self.assertEqual(count.data[0]['count'], 1000)
+        assert count.data[0]["count"] == 1000
 
     @pytest.mark.integration
     def test_mixed_operation_types(self):
@@ -410,29 +410,42 @@ class TestDbEngineCore(unittest.TestCase):
         # Mix of operations
         operations = [
             {"operation": "fetch", "query": "SELECT COUNT(*) as count FROM test_users"},
-            {"operation": "execute", "query": "INSERT INTO test_users (name, email, active) VALUES (:name, :email, :active)",
-             "params": {"name": "MixedUser", "email": "mixed@example.com", "active": True}},
-            {"operation": "fetch", "query": "SELECT * FROM test_users WHERE name = :name",
-             "params": {"name": "MixedUser"}},
-            {"operation": "execute", "query": "UPDATE test_users SET active = :active WHERE name = :name",
-             "params": {"active": False, "name": "MixedUser"}}
+            {
+                "operation": "execute",
+                "query": "INSERT INTO test_users (name, email, active) VALUES (:name, :email, :active)",
+                "params": {
+                    "name": "MixedUser",
+                    "email": "mixed@example.com",
+                    "active": True,
+                },
+            },
+            {
+                "operation": "fetch",
+                "query": "SELECT * FROM test_users WHERE name = :name",
+                "params": {"name": "MixedUser"},
+            },
+            {
+                "operation": "execute",
+                "query": "UPDATE test_users SET active = :active WHERE name = :name",
+                "params": {"active": False, "name": "MixedUser"},
+            },
         ]
 
         results = self.db_engine.execute_transaction(operations)
 
-        self.assertEqual(len(results), 4)
+        assert len(results) == 4
         # First operation is fetch, result is a list of dicts
-        self.assertEqual(results[0]['operation'], 'fetch')
-        self.assertEqual(results[0]['result'][0]['count'], 3)  # Initial count
+        assert results[0]["operation"] == "fetch"
+        assert results[0]["result"][0]["count"] == 3  # Initial count
         # Second operation is execute, result is True
-        self.assertEqual(results[1]['operation'], 'execute')
-        self.assertTrue(results[1]['result'])  # Insert success
+        assert results[1]["operation"] == "execute"
+        assert results[1]["result"]  # Insert success
         # Third operation is fetch, result is a list of dicts
-        self.assertEqual(results[2]['operation'], 'fetch')
-        self.assertEqual(len(results[2]['result']), 1)  # Fetch result
+        assert results[2]["operation"] == "fetch"
+        assert len(results[2]["result"]) == 1  # Fetch result
         # Fourth operation is execute, result is True
-        self.assertEqual(results[3]['operation'], 'execute')
-        self.assertTrue(results[3]['result'])  # Update success
+        assert results[3]["operation"] == "execute"
+        assert results[3]["result"]  # Update success
 
     @pytest.mark.unit
     def test_unicode_and_special_characters(self):
@@ -441,7 +454,7 @@ class TestDbEngineCore(unittest.TestCase):
         unicode_data = [
             {"name": "José García", "email": "jose@example.com", "active": True},
             {"name": "Müller Schmidt", "email": "mueller@example.com", "active": True},
-            {"name": "李小明", "email": "lixiaoming@example.com", "active": True}
+            {"name": "李小明", "email": "lixiaoming@example.com", "active": True},
         ]
 
         insert_sql = """
@@ -449,13 +462,12 @@ class TestDbEngineCore(unittest.TestCase):
         VALUES (:name, :email, :active)
         """
         result = self.db_engine.execute(insert_sql, params=unicode_data)
-        self.assertEqual(result.rowcount, len(unicode_data))
+        assert result.rowcount == len(unicode_data)
 
         # Verify unicode data was stored correctly
-        users = self.db_engine.fetch("SELECT * FROM test_users WHERE name = :name", params={"name": "José García"})
-        self.assertEqual(len(users.data), 1)
-        self.assertEqual(users.data[0]['name'], "José García")
-
-
-if __name__ == '__main__':
-    unittest.main()
+        users = self.db_engine.fetch(
+            "SELECT * FROM test_users WHERE name = :name",
+            params={"name": "José García"},
+        )
+        assert len(users.data) == 1
+        assert users.data[0]["name"] == "José García"
