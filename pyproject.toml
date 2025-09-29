@@ -169,7 +169,6 @@ addopts = [
     "--tb=short",
     "-x",  # stop on first failure
     "-v",  # verbose output
-    "--numprocesses=auto",  # parallel execution with automatic worker detection
 ]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",

@@ -10,34 +10,27 @@ This module is licensed under the MIT License.
 
 import os
 import sys
-import unittest
 
 import pytest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from jpy_sync_db_lite.db_engine import DbEngine
 from jpy_sync_db_lite.errors import TransactionError
 
 
-class TestDbEngineBatch(unittest.TestCase):
+class TestDbEngineBatch:
     """Test cases for DbEngine batch operations."""
 
-    def setUp(self) -> None:
+    @pytest.fixture(autouse=True)
+    def setup_method(self):
         """Set up test fixtures before each test method."""
         self.database_url = "sqlite:///:memory:"
-        self.db_engine = DbEngine(
-            self.database_url,
-            timeout=30,
-            check_same_thread=False
-        )
-
-    def tearDown(self) -> None:
+        self.db_engine = DbEngine(self.database_url, timeout=30, check_same_thread=False)
+        yield
         """Clean up after each test method."""
-        if hasattr(self, 'db_engine'):
+        if hasattr(self, "db_engine"):
             self.db_engine.shutdown()
-
-
 
     @pytest.mark.integration
     def test_batch_simple_ddl_dml(self) -> None:
@@ -59,36 +52,37 @@ class TestDbEngineBatch(unittest.TestCase):
         results = self.db_engine.batch(batch_sql)
 
         # Verify results
-        self.assertEqual(len(results), 5)
+        assert len(results) == 5
 
         # Check CREATE TABLE
-        self.assertEqual(results[0]['operation'], 'execute')
-        self.assertEqual(results[1]['operation'], 'execute')
+        assert results[0]["operation"] == "execute"
+        assert results[1]["operation"] == "execute"
 
         # Check INSERT statements
-        self.assertEqual(results[2]['operation'], 'execute')
-        self.assertEqual(results[3]['operation'], 'execute')
+        assert results[2]["operation"] == "execute"
+        assert results[3]["operation"] == "execute"
 
         # Check UPDATE and DELETE statements by content, not index
-        self.assertTrue(any(
-            r['statement'].strip() == "UPDATE batch_test SET value = 150 WHERE name = 'test1';" and r['operation'] == 'execute'
+        assert any(
+            r["statement"].strip() == "UPDATE batch_test SET value = 150 WHERE name = 'test1';"
+            and r["operation"] == "execute"
             for r in results
-        ))
-        self.assertTrue(any(
-            r['statement'].strip() == "DELETE FROM batch_test WHERE name = 'test2';" and r['operation'] == 'execute'
+        )
+        assert any(
+            r["statement"].strip() == "DELETE FROM batch_test WHERE name = 'test2';" and r["operation"] == "execute"
             for r in results
-        ))
+        )
 
         # Verify data was actually inserted and updated
         data = self.db_engine.fetch("SELECT * FROM batch_test ORDER BY id")
-        self.assertEqual(len(data.data), 1)
-        self.assertEqual(data.data[0]['name'], 'test1')
-        self.assertEqual(data.data[0]['value'], 150)
+        assert len(data.data) == 1
+        assert data.data[0]["name"] == "test1"
+        assert data.data[0]["value"] == 150
 
         # Verify CREATE TABLE statement was executed (behavior check)
-        create_statements = [r for r in results if 'CREATE TABLE' in r['statement'] and 'batch_test' in r['statement']]
-        self.assertEqual(len(create_statements), 1)
-        self.assertEqual(create_statements[0]['operation'], 'execute')
+        create_statements = [r for r in results if "CREATE TABLE" in r["statement"] and "batch_test" in r["statement"]]
+        assert len(create_statements) == 1
+        assert create_statements[0]["operation"] == "execute"
 
     @pytest.mark.integration
     def test_batch_with_select_statements(self):
@@ -117,26 +111,26 @@ class TestDbEngineBatch(unittest.TestCase):
         results = self.db_engine.batch(batch_sql)
 
         # Verify results
-        self.assertEqual(len(results), 6)
+        assert len(results) == 6
 
         # Check DDL/DML statements
-        self.assertEqual(results[0]['operation'], 'execute')  # CREATE
-        self.assertEqual(results[1]['operation'], 'execute')  # INSERT
-        self.assertEqual(results[2]['operation'], 'execute')  # INSERT
+        assert results[0]["operation"] == "execute"  # CREATE
+        assert results[1]["operation"] == "execute"  # INSERT
+        assert results[2]["operation"] == "execute"  # INSERT
 
         # Check SELECT statements
-        self.assertEqual(results[3]['operation'], 'fetch')    # SELECT Alice
-        self.assertEqual(results[4]['operation'], 'execute')  # INSERT Charlie
-        self.assertEqual(results[5]['operation'], 'fetch')    # SELECT COUNT
+        assert results[3]["operation"] == "fetch"  # SELECT Alice
+        assert results[4]["operation"] == "execute"  # INSERT Charlie
+        assert results[5]["operation"] == "fetch"  # SELECT COUNT
 
         # Verify SELECT results
-        alice_result = results[3]['result'].data
-        self.assertEqual(len(alice_result), 1)
-        self.assertEqual(alice_result[0]['name'], 'Alice')
+        alice_result = results[3]["result"].data
+        assert len(alice_result) == 1
+        assert alice_result[0]["name"] == "Alice"
 
-        count_result = results[5]['result'].data
-        self.assertEqual(len(count_result), 1)
-        self.assertEqual(count_result[0]['count'], 3)
+        count_result = results[5]["result"].data
+        assert len(count_result) == 1
+        assert count_result[0]["count"] == 3
 
     @pytest.mark.unit
     def test_batch_without_select_statements(self):
@@ -158,15 +152,15 @@ class TestDbEngineBatch(unittest.TestCase):
         results = self.db_engine.batch(batch_sql)
 
         # Verify results
-        self.assertEqual(len(results), 4)
+        assert len(results) == 4
         for result in results:
-            self.assertEqual(result['operation'], 'execute')
+            assert result["operation"] == "execute"
 
         # Verify data was actually inserted/updated
         data = self.db_engine.fetch("SELECT * FROM no_select_test ORDER BY id")
-        self.assertEqual(len(data.data), 2)
-        self.assertEqual(data.data[0]['name'], 'Updated')
-        self.assertEqual(data.data[1]['name'], 'Test2')
+        assert len(data.data) == 2
+        assert data.data[0]["name"] == "Updated"
+        assert data.data[1]["name"] == "Test2"
 
     @pytest.mark.integration
     def test_batch_with_mixed_statement_types(self):
@@ -182,19 +176,19 @@ class TestDbEngineBatch(unittest.TestCase):
         results = self.db_engine.batch(batch_sql)
 
         # Verify results
-        self.assertEqual(len(results), 5)
-        self.assertEqual(results[0]['operation'], 'execute')  # CREATE
-        self.assertEqual(results[1]['operation'], 'execute')  # INSERT
-        self.assertEqual(results[2]['operation'], 'fetch')    # SELECT
-        self.assertEqual(results[3]['operation'], 'execute')  # UPDATE
-        self.assertEqual(results[4]['operation'], 'fetch')    # SELECT COUNT
+        assert len(results) == 5
+        assert results[0]["operation"] == "execute"  # CREATE
+        assert results[1]["operation"] == "execute"  # INSERT
+        assert results[2]["operation"] == "fetch"  # SELECT
+        assert results[3]["operation"] == "execute"  # UPDATE
+        assert results[4]["operation"] == "fetch"  # SELECT COUNT
 
         # Verify SELECT results
-        self.assertEqual(len(results[2]['result'].data), 1)  # First SELECT
-        self.assertEqual(results[2]['result'].data[0]['name'], 'Test1')
+        assert len(results[2]["result"].data) == 1  # First SELECT
+        assert results[2]["result"].data[0]["name"] == "Test1"
 
-        self.assertEqual(len(results[4]['result'].data), 1)  # COUNT SELECT
-        self.assertEqual(results[4]['result'].data[0]['count'], 1)
+        assert len(results[4]["result"].data) == 1  # COUNT SELECT
+        assert results[4]["result"].data[0]["count"] == 1
 
     @pytest.mark.unit
     def test_batch_with_comments(self):
@@ -217,19 +211,19 @@ class TestDbEngineBatch(unittest.TestCase):
         results = self.db_engine.batch(batch_sql)
 
         # Verify results (comments should be stripped)
-        self.assertEqual(len(results), 3)
+        assert len(results) == 3
 
         # Check that comments were properly removed
-        create_stmt = results[0]['statement']
-        self.assertNotIn('--', create_stmt)
-        self.assertNotIn('/*', create_stmt)
-        self.assertNotIn('*/', create_stmt)
-        self.assertIn('CREATE TABLE', create_stmt)
+        create_stmt = results[0]["statement"]
+        assert "--" not in create_stmt
+        assert "/*" not in create_stmt
+        assert "*/" not in create_stmt
+        assert "CREATE TABLE" in create_stmt
 
         # Verify data was inserted correctly
         data = self.db_engine.fetch("SELECT * FROM comment_test")
-        self.assertEqual(len(data.data), 1)
-        self.assertEqual(data.data[0]['name'], 'Updated User')
+        assert len(data.data) == 1
+        assert data.data[0]["name"] == "Updated User"
 
     @pytest.mark.unit
     def test_batch_with_string_literals(self):
@@ -249,13 +243,13 @@ class TestDbEngineBatch(unittest.TestCase):
         results = self.db_engine.batch(batch_sql)
 
         # Verify results (should be 4 statements, not split by semicolons in strings)
-        self.assertEqual(len(results), 4)
+        assert len(results) == 4
 
         # Verify data was inserted correctly
         data = self.db_engine.fetch("SELECT * FROM string_test ORDER BY id")
-        self.assertEqual(len(data.data), 2)
-        self.assertEqual(data.data[0]['description'], 'Updated; with; semicolons')
-        self.assertEqual(data.data[1]['description'], 'Another; semicolon; here')
+        assert len(data.data) == 2
+        assert data.data[0]["description"] == "Updated; with; semicolons"
+        assert data.data[1]["description"] == "Another; semicolon; here"
 
     @pytest.mark.unit
     def test_batch_error_handling(self):
@@ -285,10 +279,10 @@ class TestDbEngineBatch(unittest.TestCase):
         results = self.db_engine.batch(batch_sql)
 
         # There should be only one actual result (the SELECT statement)
-        self.assertEqual(len(results), 1)
-        data = results[0]['result'].data
-        self.assertEqual(len(data), 1)
-        self.assertEqual(data[0]['test_value'], 1)
+        assert len(results) == 1
+        data = results[0]["result"].data
+        assert len(data) == 1
+        assert data[0]["test_value"] == 1
 
     @pytest.mark.integration
     def test_batch_transaction_consistency(self):
@@ -315,23 +309,23 @@ class TestDbEngineBatch(unittest.TestCase):
         results = self.db_engine.batch(batch_sql)
 
         # Verify all statements executed successfully
-        self.assertEqual(len(results), 6)
+        assert len(results) == 6
         for result in results:
-            self.assertNotEqual(result['operation'], 'error')
+            assert result["operation"] != "error"
 
         # Verify transaction consistency
-        data = results[5]['result'].data  # SELECT result
-        self.assertEqual(len(data), 2)
+        data = results[5]["result"].data  # SELECT result
+        assert len(data) == 2
 
-        alice = next(row for row in data if row['name'] == 'Alice')
-        bob = next(row for row in data if row['name'] == 'Bob')
+        alice = next(row for row in data if row["name"] == "Alice")
+        bob = next(row for row in data if row["name"] == "Bob")
 
-        self.assertEqual(alice['balance'], 800)  # 1000 - 200
-        self.assertEqual(bob['balance'], 700)    # 500 + 200
+        assert alice["balance"] == 800  # 1000 - 200
+        assert bob["balance"] == 700  # 500 + 200
 
         # Total balance should remain the same
-        total_balance = sum(row['balance'] for row in data)
-        self.assertEqual(total_balance, 1500)
+        total_balance = sum(row["balance"] for row in data)
+        assert total_balance == 1500
 
     @pytest.mark.slow
     def test_batch_large_number_of_statements(self):
@@ -347,15 +341,15 @@ class TestDbEngineBatch(unittest.TestCase):
         results = self.db_engine.batch(batch_sql)
 
         # There should be 1 CREATE + 100 INSERT + 1 SELECT = 102 results
-        self.assertEqual(len(results), 102)
-        self.assertEqual(results[0]['operation'], 'execute')  # CREATE
+        assert len(results) == 102
+        assert results[0]["operation"] == "execute"  # CREATE
         for i in range(1, 101):
-            self.assertEqual(results[i]['operation'], 'execute')  # INSERT
-        self.assertEqual(results[101]['operation'], 'fetch')  # SELECT
+            assert results[i]["operation"] == "execute"  # INSERT
+        assert results[101]["operation"] == "fetch"  # SELECT
 
         # Check the SELECT result
-        count_result = results[101]['result'].data
-        self.assertEqual(count_result[0]['count'], 100)
+        count_result = results[101]["result"].data
+        assert count_result[0]["count"] == 100
 
     @pytest.mark.unit
     def test_batch_with_parameters_validation(self):
@@ -369,9 +363,9 @@ class TestDbEngineBatch(unittest.TestCase):
         results = self.db_engine.batch(batch_sql)
 
         # Verify all statements are valid
-        self.assertEqual(len(results), 3)
+        assert len(results) == 3
         for result in results:
-            self.assertNotEqual(result['operation'], 'error')
+            assert result["operation"] != "error"
 
         # Test with invalid SQL - should raise immediately
         invalid_batch = """
@@ -380,7 +374,7 @@ class TestDbEngineBatch(unittest.TestCase):
         INSERT INTO invalid_test (id) VALUES (1);
         """
 
-        with self.assertRaises(TransactionError):
+        with pytest.raises(TransactionError):
             self.db_engine.batch(invalid_batch)
 
     @pytest.mark.integration
@@ -419,16 +413,16 @@ class TestDbEngineBatch(unittest.TestCase):
             thread.join()
 
         # Verify all batch operations completed successfully
-        self.assertEqual(len(results_list), 5)
+        assert len(results_list) == 5
 
         for i, results in enumerate(results_list):
-            self.assertEqual(len(results), 4)  # CREATE + 2 INSERT + 1 SELECT
+            assert len(results) == 4  # CREATE + 2 INSERT + 1 SELECT
             for result in results:
-                self.assertNotEqual(result['operation'], 'error')
+                assert result["operation"] != "error"
 
             # Verify data was inserted correctly
-            count_result = results[3]['result'].data
-            self.assertEqual(count_result[0]['count'], 2)
+            count_result = results[3]["result"].data
+            assert count_result[0]["count"] == 2
 
     @pytest.mark.integration
     def test_batch_with_cte_and_advanced_statements(self):
@@ -494,69 +488,69 @@ class TestDbEngineBatch(unittest.TestCase):
         results = self.db_engine.batch(batch_sql)
 
         # Verify we have the expected number of statements
-        self.assertEqual(len(results), 10)  # 10 statements total
+        assert len(results) == 10  # 10 statements total
 
         # Verify all statements executed successfully
         for result in results:
-            self.assertNotEqual(result['operation'], 'error')
+            assert result["operation"] != "error"
 
         # Find and verify CREATE TABLE statements
-        create_statements = [r for r in results if 'CREATE TABLE' in r['statement']]
-        self.assertEqual(len(create_statements), 2)
+        create_statements = [r for r in results if "CREATE TABLE" in r["statement"]]
+        assert len(create_statements) == 2
         for create_stmt in create_statements:
-            self.assertEqual(create_stmt['operation'], 'execute')
+            assert create_stmt["operation"] == "execute"
 
         # Find and verify INSERT statements
-        insert_statements = [r for r in results if 'INSERT INTO' in r['statement']]
-        self.assertEqual(len(insert_statements), 2)
+        insert_statements = [r for r in results if "INSERT INTO" in r["statement"]]
+        assert len(insert_statements) == 2
         for insert_stmt in insert_statements:
-            self.assertEqual(insert_stmt['operation'], 'execute')
+            assert insert_stmt["operation"] == "execute"
 
         # Find and verify fetch statements
-        fetch_statements = [r for r in results if r['operation'] == 'fetch']
-        self.assertEqual(len(fetch_statements), 6)  # CTE dept_stats, CTE numbers, VALUES, PRAGMA, EXPLAIN, DESCRIBE-like
+        fetch_statements = [r for r in results if r["operation"] == "fetch"]
+        assert len(fetch_statements) == 6  # CTE dept_stats, CTE numbers, VALUES, PRAGMA, EXPLAIN, DESCRIBE-like
 
         # Find and verify CTE dept_stats results
-        dept_stats_result = next(r for r in fetch_statements if 'dept_stats' in r['statement'])
-        dept_stats_data = dept_stats_result['result'].data
-        self.assertGreater(len(dept_stats_data), 0)
-        self.assertIn('dept_name', dept_stats_data[0])
-        self.assertIn('emp_count', dept_stats_data[0])
-        self.assertIn('avg_salary', dept_stats_data[0])
+        dept_stats_result = next(r for r in fetch_statements if "dept_stats" in r["statement"])
+        dept_stats_data = dept_stats_result["result"].data
+        assert len(dept_stats_data) > 0
+        assert "dept_name" in dept_stats_data[0]
+        assert "emp_count" in dept_stats_data[0]
+        assert "avg_salary" in dept_stats_data[0]
 
         # Find and verify recursive CTE numbers results
-        numbers_result = next(r for r in fetch_statements if 'RECURSIVE numbers' in r['statement'])
-        numbers_data = numbers_result['result'].data
-        self.assertEqual(len(numbers_data), 5)  # Numbers 1-5
-        self.assertEqual(numbers_data[0]['n'], 1)
-        self.assertEqual(numbers_data[4]['n'], 5)
-        self.assertEqual(numbers_data[4]['square'], 25)
+        numbers_result = next(r for r in fetch_statements if "RECURSIVE numbers" in r["statement"])
+        numbers_data = numbers_result["result"].data
+        assert len(numbers_data) == 5  # Numbers 1-5
+        assert numbers_data[0]["n"] == 1
+        assert numbers_data[4]["n"] == 5
+        assert numbers_data[4]["square"] == 25
 
         # Find and verify VALUES results
-        values_result = next(r for r in fetch_statements if 'VALUES (' in r['statement'])
-        values_data = values_result['result'].data
-        self.assertEqual(len(values_data), 3)
-        self.assertEqual(values_data[0]['column1'], 1)
-        self.assertEqual(values_data[0]['column2'], 'Test1')
+        values_result = next(r for r in fetch_statements if "VALUES (" in r["statement"])
+        values_data = values_result["result"].data
+        assert len(values_data) == 3
+        assert values_data[0]["column1"] == 1
+        assert values_data[0]["column2"] == "Test1"
 
         # Find and verify PRAGMA results
-        pragma_result = next(r for r in fetch_statements if 'PRAGMA table_info' in r['statement'])
-        pragma_data = pragma_result['result'].data
-        self.assertGreater(len(pragma_data), 0)
-        self.assertIn('name', pragma_data[0])
-        self.assertIn('type', pragma_data[0])
+        pragma_result = next(r for r in fetch_statements if "PRAGMA table_info" in r["statement"])
+        pragma_data = pragma_result["result"].data
+        assert len(pragma_data) > 0
+        assert "name" in pragma_data[0]
+        assert "type" in pragma_data[0]
 
         # Find and verify EXPLAIN results
-        explain_result = next(r for r in fetch_statements if 'EXPLAIN QUERY PLAN' in r['statement'])
-        explain_data = explain_result['result'].data
-        self.assertGreater(len(explain_data), 0)
+        explain_result = next(r for r in fetch_statements if "EXPLAIN QUERY PLAN" in r["statement"])
+        explain_data = explain_result["result"].data
+        assert len(explain_data) > 0
 
         # Verify data was actually inserted
         dept_data = self.db_engine.fetch("SELECT * FROM departments ORDER BY id")
-        self.assertEqual(len(dept_data.data), 3)
+        assert len(dept_data.data) == 3
 
         emp_data = self.db_engine.fetch("SELECT * FROM employees ORDER BY id")
-        self.assertEqual(len(emp_data.data), 4)
+        assert len(emp_data.data) == 4
 
     @pytest.mark.integration
     def test_batch_with_complex_cte_nested(self):
@@ -591,9 +585,5 @@ class TestDbEngineBatch(unittest.TestCase):
         results = self.db_engine.batch(batch_sql)
 
         # Check that the last SELECT returns the correct count
-        sales_data = results[7]['result'].data
-        self.assertEqual(sales_data[0]['count'], 5)
-
-
-if __name__ == '__main__':
-    unittest.main()
+        sales_data = results[7]["result"].data
+        assert sales_data[0]["count"] == 5

@@ -59,12 +59,7 @@ def run_tests(test_files, markers=None, verbose=True, coverage=True, show_output
 
     # Add coverage options if requested
     if coverage:
-        cmd.extend([
-            "--cov=jpy_sync_db_lite",
-            "--cov-report=term-missing",
-            "--cov-report=html",
-            "--cov-fail-under=80"
-        ])
+        cmd.extend(["--cov=jpy_sync_db_lite", "--cov-report=term-missing", "--cov-report=html", "--cov-fail-under=80"])
 
     if verbose:
         print(f"Running command: {' '.join(cmd)}")
@@ -86,42 +81,27 @@ def main():
     parser = argparse.ArgumentParser(
         description="Test runner for jpy-sync-db-lite",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=__doc__
+        epilog=__doc__,
     )
 
     # Test category options
-    parser.add_argument("--fast", "-f", action="store_true",
-                       help="Run only fast unit tests (default)")
-    parser.add_argument("--full", "-a", action="store_true",
-                       help="Run all tests")
-    parser.add_argument("--core", "-c", action="store_true",
-                       help="Run core functionality tests only")
-    parser.add_argument("--batch", "-b", action="store_true",
-                       help="Run batch operation tests")
-    parser.add_argument("--edge", "-e", action="store_true",
-                       help="Run edge case tests")
-    parser.add_argument("--sqlite", "-s", action="store_true",
-                       help="Run SQLite-specific tests")
-    parser.add_argument("--coverage", action="store_true",
-                       help="Run coverage tests")
-    parser.add_argument("--performance", "-p", action="store_true",
-                       help="Run performance tests")
-    parser.add_argument("--stress", "-t", action="store_true",
-                       help="Run stress tests (concurrent client validation)")
-    parser.add_argument("--integration", "-i", action="store_true",
-                       help="Run integration tests")
-    parser.add_argument("--slow", "-l", action="store_true",
-                       help="Run slow tests")
-    parser.add_argument("--sql-helper", action="store_true",
-                       help="Run SQL helper tests only")
+    parser.add_argument("--fast", "-f", action="store_true", help="Run only fast unit tests (default)")
+    parser.add_argument("--full", "-a", action="store_true", help="Run all tests")
+    parser.add_argument("--core", "-c", action="store_true", help="Run core functionality tests only")
+    parser.add_argument("--batch", "-b", action="store_true", help="Run batch operation tests")
+    parser.add_argument("--edge", "-e", action="store_true", help="Run edge case tests")
+    parser.add_argument("--sqlite", "-s", action="store_true", help="Run SQLite-specific tests")
+    parser.add_argument("--coverage", action="store_true", help="Run coverage tests")
+    parser.add_argument("--performance", "-p", action="store_true", help="Run performance tests")
+    parser.add_argument("--stress", "-t", action="store_true", help="Run stress tests (concurrent client validation)")
+    parser.add_argument("--integration", "-i", action="store_true", help="Run integration tests")
+    parser.add_argument("--slow", "-l", action="store_true", help="Run slow tests")
+    parser.add_argument("--sql-helper", action="store_true", help="Run SQL helper tests only")
 
     # Other options
-    parser.add_argument("--verbose", "-v", action="store_true",
-                       help="Run tests with verbose output")
-    parser.add_argument("--quiet", "-q", action="store_true",
-                       help="Run tests quietly (less output)")
-    parser.add_argument("--no-coverage", action="store_true",
-                       help="Disable coverage reporting")
+    parser.add_argument("--verbose", "-v", action="store_true", help="Run tests with verbose output")
+    parser.add_argument("--quiet", "-q", action="store_true", help="Run tests quietly (less output)")
+    parser.add_argument("--no-coverage", action="store_true", help="Disable coverage reporting")
 
     args = parser.parse_args()
 
@@ -140,7 +120,7 @@ def main():
             "tests/test_db_engine_coverage.py",
             "tests/test_sql_helper.py",
             "tests/test_db_engine_performance.py",
-            "tests/test_db_engine_stress.py"
+            "tests/test_db_engine_stress.py",
         ]
     elif args.core:
         test_files = ["tests/test_db_engine.py"]
@@ -171,7 +151,7 @@ def main():
             "tests/test_db_engine_core.py",
             "tests/test_db_engine_batch.py",
             "tests/test_db_engine_sqlite.py",
-            "tests/test_sql_helper.py"
+            "tests/test_sql_helper.py",
         ]
     elif args.slow:
         markers = ["slow"]
@@ -180,7 +160,7 @@ def main():
             "tests/test_db_engine_core.py",
             "tests/test_db_engine_batch.py",
             "tests/test_db_engine_performance.py",
-            "tests/test_db_engine_stress.py"
+            "tests/test_db_engine_stress.py",
         ]
     else:
         # Default: fast unit tests

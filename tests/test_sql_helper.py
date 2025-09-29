@@ -71,7 +71,7 @@ class TestRemoveSqlComments:
     def test_comments_in_string_literals(self):
         """Test that comments within string literals are preserved."""
         sql = """
-        SELECT * FROM users 
+        SELECT * FROM users
         WHERE name = 'John -- This is not a comment'
         AND description = '/* This is also not a comment */'
         """
@@ -220,17 +220,17 @@ class TestDetectStatementType:
     def test_complex_cte(self):
         """Test detecting complex CTE statement type."""
         sql = """
-        WITH 
+        WITH
         active_users AS (
             SELECT id, name FROM users WHERE active = 1
         ),
         user_stats AS (
-            SELECT user_id, COUNT(*) as post_count 
-            FROM posts 
+            SELECT user_id, COUNT(*) as post_count
+            FROM posts
             GROUP BY user_id
         )
-        SELECT u.name, s.post_count 
-        FROM active_users u 
+        SELECT u.name, s.post_count
+        FROM active_users u
         JOIN user_stats s ON u.id = s.user_id
         """
         result = detect_statement_type(sql)
@@ -260,7 +260,7 @@ class TestDetectStatementType:
             "TRUNCATE TABLE users",
             "ANALYZE table1",
             "VACUUM",
-            "CHECKPOINT"
+            "CHECKPOINT",
         ]
         for sql in statements:
             result = detect_statement_type(sql)
@@ -269,8 +269,8 @@ class TestDetectStatementType:
     def test_multiple_ctes_followed_by_non_fetch(self):
         """Test multiple CTEs followed by non-fetch top-level statement."""
         sql = """
-        WITH a AS (SELECT 1 as x), 
-             b AS (SELECT 2 as y) 
+        WITH a AS (SELECT 1 as x),
+             b AS (SELECT 2 as y)
         INSERT INTO t SELECT * FROM a
         """
         result = detect_statement_type(sql)
@@ -365,11 +365,11 @@ class TestParseSqlStatements:
             name TEXT NOT NULL,
             email TEXT UNIQUE
         );
-        
-        INSERT INTO users (name, email) VALUES 
+
+        INSERT INTO users (name, email) VALUES
             ('Alice', 'alice@example.com'),
             ('Bob', 'bob@example.com');
-            
+
         SELECT * FROM users WHERE active = 1;
         """
         result = parse_sql_statements(sql)
@@ -381,7 +381,7 @@ class TestParseSqlStatements:
     def test_statements_with_string_literals(self):
         """Test parsing statements with string literals containing semicolons."""
         sql = """
-        INSERT INTO users (name, description) VALUES 
+        INSERT INTO users (name, description) VALUES
             ('John', 'User; with semicolon in description');
         SELECT * FROM users WHERE name = 'Alice; Bob';
         """
@@ -403,20 +403,22 @@ class TestSplitSqlFile:
     @pytest.fixture
     def temp_sql_file(self):
         """Create a temporary SQL file for testing."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.sql', delete=False) as f:
-            f.write("""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".sql", delete=False) as f:
+            f.write(
+                """
             -- Create users table
             CREATE TABLE users (
                 id INTEGER PRIMARY KEY,
                 name TEXT NOT NULL
             );
-            
+
             -- Insert sample data
             INSERT INTO users (name) VALUES ('Alice'), ('Bob');
-            
+
             -- Query users
             SELECT * FROM users;
-            """)
+            """
+            )
             temp_file = f.name
 
         yield temp_file
@@ -480,7 +482,7 @@ class TestSplitSqlFile:
 
     def test_split_sql_file_empty_content(self):
         """Test splitting SQL file with empty content."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.sql', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".sql", delete=False) as f:
             f.write("")
             temp_file = f.name
 
@@ -492,12 +494,14 @@ class TestSplitSqlFile:
 
     def test_split_sql_file_comments_only(self):
         """Test splitting SQL file with only comments."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.sql', delete=False) as f:
-            f.write("""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".sql", delete=False) as f:
+            f.write(
+                """
             -- This is a comment
             /* This is a multi-line comment
                that spans multiple lines */
-            """)
+            """
+            )
             temp_file = f.name
 
         try:
@@ -508,7 +512,7 @@ class TestSplitSqlFile:
 
     def test_split_sql_file_whitespace_only(self):
         """Test splitting SQL file with only whitespace."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.sql', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".sql", delete=False) as f:
             f.write("   \n\t  \n  ")
             temp_file = f.name
 
@@ -520,35 +524,37 @@ class TestSplitSqlFile:
 
     def test_split_sql_file_complex_statements(self):
         """Test splitting SQL file with complex statements."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.sql', delete=False) as f:
-            f.write("""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".sql", delete=False) as f:
+            f.write(
+                """
             -- Complex SQL file with various statement types
-            
+
             CREATE TABLE users (
                 id INTEGER PRIMARY KEY,
                 name TEXT NOT NULL,
                 email TEXT UNIQUE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
-            
+
             CREATE INDEX idx_users_email ON users(email);
-            
-            INSERT INTO users (name, email) VALUES 
+
+            INSERT INTO users (name, email) VALUES
                 ('Alice', 'alice@example.com'),
                 ('Bob', 'bob@example.com'),
                 ('Charlie', 'charlie@example.com');
-            
+
             CREATE VIEW active_users AS
-                SELECT id, name, email 
-                FROM users 
+                SELECT id, name, email
+                FROM users
                 WHERE created_at > '2024-01-01';
-            
+
             SELECT u.name, u.email, COUNT(p.id) as post_count
             FROM users u
             LEFT JOIN posts p ON u.id = p.user_id
             GROUP BY u.id, u.name, u.email
             HAVING COUNT(p.id) > 0;
-            """)
+            """
+            )
             temp_file = f.name
 
         try:
@@ -564,15 +570,17 @@ class TestSplitSqlFile:
 
     def test_split_sql_file_with_string_literals(self):
         """Test splitting SQL file with string literals containing special characters."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.sql', delete=False) as f:
-            f.write("""
-            INSERT INTO messages (content) VALUES 
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".sql", delete=False) as f:
+            f.write(
+                """
+            INSERT INTO messages (content) VALUES
                 ('Hello; this is a message with semicolon'),
                 ('Another message with /* comment-like */ text'),
                 ('Message with -- comment-like text');
-            
+
             SELECT * FROM messages WHERE content LIKE '%;%';
-            """)
+            """
+            )
             temp_file = f.name
 
         try:
@@ -642,7 +650,7 @@ class TestExtractCreateTableStatements:
             id INTEGER PRIMARY KEY,
             name TEXT NOT NULL
         );
-        
+
         CREATE TABLE posts (
             id INTEGER PRIMARY KEY,
             user_id INTEGER,
@@ -800,21 +808,13 @@ class TestParseTableColumns:
         """Test parsing simple column definitions."""
         table_body = "id INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE"
         result = parse_table_columns(table_body)
-        assert result == {
-            "id": "INTEGER",
-            "name": "TEXT",
-            "email": "TEXT"
-        }
+        assert result == {"id": "INTEGER", "name": "TEXT", "email": "TEXT"}
 
     def test_column_definitions_with_size_specifications(self):
         """Test parsing column definitions with size specifications."""
         table_body = "name VARCHAR(255) NOT NULL, price DECIMAL(10,2), description TEXT"
         result = parse_table_columns(table_body)
-        assert result == {
-            "name": "VARCHAR",
-            "price": "DECIMAL",
-            "description": "TEXT"
-        }
+        assert result == {"name": "VARCHAR", "price": "DECIMAL", "description": "TEXT"}
 
     def test_column_definitions_with_constraints(self):
         """Test parsing column definitions with various constraints."""
@@ -830,7 +830,7 @@ class TestParseTableColumns:
             "id": "INTEGER",
             "user_id": "INTEGER",
             "created_at": "TIMESTAMP",
-            "status": "TEXT"
+            "status": "TEXT",
             # Note: 'data JSON' column is not currently parsed due to CHECK constraint handling
         }
 
@@ -842,11 +842,7 @@ class TestParseTableColumns:
         email TEXT UNIQUE       -- Email address
         """
         result = parse_table_columns(table_body)
-        assert result == {
-            "id": "INTEGER",
-            "name": "TEXT",
-            "email": "TEXT"
-        }
+        assert result == {"id": "INTEGER", "name": "TEXT", "email": "TEXT"}
 
     def test_column_definitions_with_nested_parentheses(self):
         """Test parsing column definitions with nested parentheses."""
@@ -856,11 +852,7 @@ class TestParseTableColumns:
         config JSON DEFAULT '{"enabled": true}' CHECK (json_valid(config))
         """
         result = parse_table_columns(table_body)
-        assert result == {
-            "id": "INTEGER",
-            "metadata": "TEXT",
-            "config": "JSON"
-        }
+        assert result == {"id": "INTEGER", "metadata": "TEXT", "config": "JSON"}
 
     def test_column_definitions_with_quoted_identifiers_not_supported(self):
         """Test that quoted identifiers are not currently supported."""
@@ -884,7 +876,7 @@ class TestParseTableColumns:
             "json_data": "JSONB",
             "array_data": "INTEGER[]",
             "enum_status": "STATUS_ENUM",
-            "custom_type": "CUSTOM_TYPE_NAME"
+            "custom_type": "CUSTOM_TYPE_NAME",
             # Note: 'uuid' column is not parsed due to DEFAULT constraint handling
         }
 
@@ -908,7 +900,7 @@ class TestParseTableColumns:
         result = parse_table_columns(table_body)
         assert result == {
             "id": "INTEGER",
-            "config": "CUSTOM"
+            "config": "CUSTOM",
             # Note: 'data UNKNOWN_TYPE' column is not currently parsed
         }
 
@@ -966,9 +958,9 @@ class TestExtractTableNames:
     def test_complex_join_statement(self):
         """Test extracting table names from complex JOIN statement."""
         sql = """
-        SELECT u.name, p.title, c.content 
-        FROM users u 
-        LEFT JOIN posts p ON u.id = p.user_id 
+        SELECT u.name, p.title, c.content
+        FROM users u
+        LEFT JOIN posts p ON u.id = p.user_id
         INNER JOIN comments c ON p.id = c.post_id
         WHERE u.active = 1
         """
@@ -994,11 +986,11 @@ class TestExtractTableNames:
     def test_multiple_ctes(self):
         """Test extracting table names from multiple CTEs."""
         sql = """
-        WITH 
+        WITH
         active_users AS (SELECT id, name FROM users WHERE active = 1),
         user_posts AS (SELECT user_id, COUNT(*) as post_count FROM posts GROUP BY user_id)
-        SELECT u.name, p.post_count 
-        FROM active_users u 
+        SELECT u.name, p.post_count
+        FROM active_users u
         JOIN user_posts p ON u.id = p.user_id
         """
         result = extract_table_names(sql)
@@ -1011,7 +1003,7 @@ class TestExtractTableNames:
     def test_subquery_statement(self):
         """Test extracting table names from subquery statement."""
         sql = """
-        SELECT u.name, 
+        SELECT u.name,
                (SELECT COUNT(*) FROM posts WHERE user_id = u.id) as post_count
         FROM users u
         """
@@ -1048,7 +1040,7 @@ class TestExtractTableNames:
         """Test extracting table names with comments."""
         sql = """
         -- Get user data
-        SELECT u.name, p.title 
+        SELECT u.name, p.title
         FROM users u  -- Main users table
         JOIN posts p ON u.id = p.user_id  -- User posts
         """
@@ -1089,7 +1081,7 @@ class TestSqlHelperIntegration:
             name TEXT NOT NULL,
             email TEXT UNIQUE
         );
-        
+
         CREATE TABLE posts (
             id INTEGER PRIMARY KEY,
             user_id INTEGER,
@@ -1097,19 +1089,19 @@ class TestSqlHelperIntegration:
             content TEXT,
             FOREIGN KEY (user_id) REFERENCES users(id)
         );
-        
+
         -- Insert sample data
-        INSERT INTO users (name, email) VALUES 
+        INSERT INTO users (name, email) VALUES
             ('Alice', 'alice@example.com'),
             ('Bob', 'bob@example.com');
-            
-        INSERT INTO posts (user_id, title, content) VALUES 
+
+        INSERT INTO posts (user_id, title, content) VALUES
             (1, 'First Post', 'Hello World'),
             (2, 'Second Post', 'Another post');
-            
+
         -- Query data
-        SELECT u.name, p.title 
-        FROM users u 
+        SELECT u.name, p.title
+        FROM users u
         JOIN posts p ON u.id = p.user_id;
         """
 
@@ -1127,11 +1119,7 @@ class TestSqlHelperIntegration:
         # Test table column parsing
         users_table_body = next(body for name, body in create_tables if name == "users")
         users_columns = parse_table_columns(users_table_body)
-        assert users_columns == {
-            "id": "INTEGER",
-            "name": "TEXT",
-            "email": "TEXT"
-        }
+        assert users_columns == {"id": "INTEGER", "name": "TEXT", "email": "TEXT"}
 
         # Test table name extraction from SELECT
         select_statement = statements[-1]
@@ -1169,10 +1157,10 @@ class TestSqlHelperIntegration:
     def test_complex_nested_sql_processing(self):
         """Test processing of complex nested SQL structures."""
         sql_content = """
-        WITH 
+        WITH
         user_stats AS (
-            SELECT user_id, COUNT(*) as post_count 
-            FROM posts 
+            SELECT user_id, COUNT(*) as post_count
+            FROM posts
             GROUP BY user_id
         ),
         active_users AS (
@@ -1208,7 +1196,7 @@ class TestSqlHelperIntegration:
             id INTEGER PRIMARY KEY,
             name TEXT NOT NULL
         -- Missing closing parenthesis
-        
+
         SELECT * FROM users WHERE id = :id
         """
 
@@ -1239,8 +1227,8 @@ class TestSqlHelperEdgeCases:
     def test_sql_with_unicode_characters(self):
         """Test handling of SQL with Unicode characters."""
         sql = """
-        SELECT name FROM users 
-        WHERE name = 'José María' 
+        SELECT name FROM users
+        WHERE name = 'José María'
         AND description = 'Café au lait'
         """
 
@@ -1256,7 +1244,7 @@ class TestSqlHelperEdgeCases:
     def test_sql_with_special_characters_not_supported(self):
         """Test that SQL with special characters in table names is not currently supported."""
         sql = """
-        SELECT * FROM "table-with-dashes" 
+        SELECT * FROM "table-with-dashes"
         WHERE "column.with.dots" = 'value with spaces'
         AND "column_with_underscores" = 'value with "quotes"'
         """
@@ -1293,7 +1281,7 @@ class TestSqlHelperEdgeCases:
     def test_sql_with_line_continuations(self):
         """Test handling of SQL with line continuations."""
         sql = """
-        SELECT u.name, 
+        SELECT u.name,
                p.title,
                c.content
         FROM users u
@@ -1320,7 +1308,7 @@ class TestSqlHelperEdgeCases:
     def test_sql_with_string_literals_containing_keywords(self):
         """Test handling of SQL with string literals containing SQL keywords."""
         sql = """
-        INSERT INTO messages (content) VALUES 
+        INSERT INTO messages (content) VALUES
             ('This is a SELECT statement'),
             ('This is an INSERT statement'),
             ('This is a CREATE TABLE statement');
